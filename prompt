@@ -1,0 +1,1087 @@
+In starting it should look likeedesign the Notes app UI to exactly follow these two preview structures:
+
+1. List View: single-column stacked note cards.
+
+2. Masonry View: two-column staggered grid with variable-height note cards.
+
+. Add an Interchange/View Toggle button in the top bar to instantly switch between List View and Masonry View. Make both layouts responsive and visually consistent.
+
+
+
+Make each note card long press to drag and move for both android and pc
+
+
+
+Add pin or un pin option on the card of each notes
+
+
+
+Make sure the android apk have the navigation back as going back not closing the app.
+
+
+
+MAIN / FRONT SCREEN FEATURES
+
+1. Top App Bar
+
+2. Sidebar / Navigation
+
+3. Search Bar
+
+4. New Note / Create Note
+
+5. Note Cards
+
+6. List View
+
+7. Masonry / Grid View
+
+8. List ↔ Grid Interchange Button
+
+9. Note Card Expansion
+
+10. Pin Section
+
+11. Folders Section
+
+12. Tags / Filters
+
+13. Archive Section
+
+14. Bulk Selection Mode
+
+15. Drag-and-Drop Organization
+
+16. Mobile Floating Create Button
+
+17. Empty States
+
+18. Note Context Menu / Actions
+
+19. Responsive Desktop ↔ Android Layout
+
+20. Front-Screen Animations & Transitions
+
+
+
+Make sure each note card have color selection option
+
+
+
+Then add the tags means we can tag any notes as we want and that will be easy to navigate notes just in that tag section and make sure in side bar there is tag section with its own search
+
+Do same and add a feature where we make folder and move notes into that but still we can also tag tgem so that for broader use we will have tags and for niche we will use folder
+
+make sure we could edit folder icon as any emoji and select any name and also add it in side bar.
+
+But for tags it must be only color selection and name like name of the tag and with that colour it show on each notes a small badge, same with folders, both of them with name and colors as small batch will be on each notes card throughout everywhere.
+
+Make sure we can edit, delete and add folder and tags
+
+Also add archive section and we can keep any notes from anywhere in archive and make sure it also have tag and on side bar + for all have their search bar.
+
+
+
+Add trash section also with empty trash button
+
+
+
+### Search System
+
+- Global Search: search all normal notes by title, content, tags, and folders.
+
+- Folder Search: search only inside the currently selected folder.
+
+- Tag Search: filter/search using one or multiple tags.
+
+- Archive Search: dedicated search inside Archive, always available.
+
+- In-Note Search: search only inside the currently open note.
+
+CRITICAL IN-NOTE SEARCH:
+
+- Highlight ALL occurrences of the searched word/phrase simultaneously.
+
+- The currently selected match must have a distinct visual highlight.
+
+- Next/Previous buttons must navigate through matches one-by-one.
+
+- Navigation MUST automatically scroll the editor to the selected match and keep it visible.
+
+- Show match count, e.g. “3 of 12”.
+
+- Ensure highlighting, selected-match navigation, scrolling, and match counting actually work correctly and do not break with long or richly formatted notes.
+
+- Retest repeatedly with multiple matches, long notes, formatted text, and mobile/desktop layouts.
+
+
+
+### Images & GIF Upload Settings
+
+- FIRST, add dedicated upload controls/settings for:
+
+
+
+
+
+Add Image
+
+
+
+Add GIF
+
+- Support selecting/uploading multiple images and GIFs.
+
+- After upload, continue with the exact image/GIF editor and layout requirements below.
+
+### Images & GIFs in the Note Editor
+
+- Put ALL attached images and GIFs at the very TOP of the note editor, above the title and Markdown content.
+
+- Place them inside ONE self-contained, compact media container with rounded corners and clean spacing.
+
+- The media container must have its own internal scrolling when many images/GIFs exist. Never allow attachments to expand uncontrollably and consume the entire editor viewport.
+
+- Show compact thumbnails/previews of all images and GIFs inside this container, similar to the supplied screenshots.
+
+- Each thumbnail must have compact overlay controls for:
+
+
+
+
+
+Edit
+
+
+
+Delete
+
+
+
+Insert into Markdown
+
+- Add a dedicated Gallery/Expand button inside the media container. Tapping it opens a full-window media viewer showing all attached images and GIFs clearly at a larger size.
+
+- Tapping ANY image must open its image editor with:
+
+
+
+
+
+Crop
+
+
+
+Add text
+
+
+
+Drawing
+
+
+
+Undo
+
+
+
+Reset
+
+
+
+Save
+
+- Editing an image must update the existing attachment without breaking its preview or Markdown relationship.
+
+- In the full-window viewer support:
+
+
+
+
+
+Image/GIF preview
+
+
+
+Zoom
+
+
+
+Pan
+
+
+
+Download
+
+
+
+Delete
+
+
+
+Reorder
+
+
+
+Drag-and-drop position changing
+
+- Allow dragging thumbnails directly inside the media container to change their order. Persist the new order.
+
+- GIFs must remain animated and must never be converted into static images.
+
+### Editor Layout
+
+The order must remain:
+
+1. Fixed/sticky editor toolbar or Markdown formatting controls.
+
+2. Self-contained image/GIF container at the very top of the note content.
+
+3. Title.
+
+4. Markdown/Tiptap editor content.
+
+The Markdown editor toolbar, search/find bar, and other editor controls may remain sticky at the top or bottom as appropriate, but the image/GIF container itself must remain a normal self-contained content section and MUST NOT become a huge fixed overlay.
+
+The media container must never:
+
+- Overflow the viewport.
+
+- Cover the title or editor.
+
+- Overlap the toolbar.
+
+- Cause horizontal scrolling.
+
+- Push the entire note into an unusable layout.
+
+- Create broken/stacked thumbnails.
+
+- Create uncontrolled vertical expansion.
+
+Use compact gaps and responsive thumbnail sizing so the editor remains highly usable even with many attachments.
+
+### Note Cards
+
+Attached images must ALSO appear as previews on the main Note Cards.
+
+- Show one or multiple compact media previews depending on available card space.
+
+- Preserve the same clean, minimal card layout.
+
+- Never let media overflow or distort card dimensions.
+
+- GIF previews should remain animated where supported.
+
+- Text/title/snippet and media must coexist without overlap.
+
+### Markdown Editing
+
+Keep the full Markdown/Tiptap editing system functional alongside the media system, including:
+
+- Bold
+
+- Italic
+
+- Underline
+
+- Strikethrough
+
+- Inline code
+
+- H1/H2/H3/H4
+
+- Bulleted lists
+
+- Numbered lists
+
+- Checklists
+
+- Blockquotes
+
+- Code blocks
+
+- Links
+
+- Horizontal dividers
+
+- Undo/Redo
+
+- Clear formatting
+
+Formatting controls must remain accessible while editing and must never be hidden behind or overlapped by the media container.
+
+### Critical Verification
+
+Test with:
+
+- 1 image
+
+- Many images
+
+- Multiple GIFs
+
+- Mixed images + GIFs
+
+- Very large images
+
+- Image cropping
+
+- Adding text to images
+
+- Long notes
+
+- Long Markdown documents
+
+- Mobile/Android
+
+- Tablet
+
+- Desktop
+
+Verify that the media container remains compact, internally scrollable, correctly ordered, fully functional, and NEVER causes overflow, overlap, viewport-breaking, or unusable editor layouts.
+
+
+
+### Main Editor UI Skeleton
+
+Keep everything else in the previous Images/GIFs + Markdown specification EXACTLY the same. Only add this UI structure:
+
+The full-screen note editor should follow this visual hierarchy:
+
+1. Top navigation bar
+
+
+
+
+
+Back button on the left.
+
+
+
+Pin button.
+
+
+
+In-note Search button.
+
+
+
+Close/Done button on the right.
+
+
+
+Keep this bar compact and sticky.
+
+2. Markdown formatting toolbar
+
+
+
+
+
+Directly below the top navigation bar.
+
+
+
+Compact horizontal toolbar.
+
+
+
+Sticky while editing.
+
+
+
+Include all existing Markdown/Tiptap formatting controls.
+
+
+
+Allow horizontal scrolling on narrow screens instead of wrapping or overflowing.
+
+3. Media container
+
+
+
+
+
+Directly below the formatting toolbar.
+
+
+
+ALL images/GIFs appear here at the very top of the note.
+
+
+
+Self-contained fixed/max-height container with its own internal scrolling.
+
+
+
+Compact spacing and thumbnails exactly following the supplied UI reference.
+
+
+
+Gallery/full-window button inside the container.
+
+4. Note content
+
+
+
+
+
+Title.
+
+
+
+Markdown/Tiptap document body.
+
+
+
+Clean continuous editor area with no unnecessary separate “Take a note…” input.
+
+5. Editor utility controls
+
+
+
+
+
+Jump-to-top and jump-to-bottom floating controls when needed.
+
+
+
+Bottom action bar may contain secondary note actions where appropriate.
+
+
+
+Never allow utility controls to overlap the document, media, keyboard, or each other.
+
+CRITICAL:
+
+- The media container must remain visually separate from the Markdown document.
+
+- The Markdown toolbar and top navigation remain accessible/sticky.
+
+- Images/GIFs must NEVER become sticky, cover content, overflow, or create layout collisions.
+
+- Preserve this exact hierarchy and responsive behavior across Android, tablet, desktop, Windows, and Linux.
+
+- Match the supplied screenshots' overall proportions, spacing, compact controls, dark visual language, rounded media container, and interaction structure without copying proprietary branding/assets.
+
+
+
+Add two floating navigation buttons on the right side of the editor:
+
+↑ Jump directly to the top.
+
+↓ Jump directly to the bottom.
+
+Keep them compact, unobtrusive, touch-friendly, and ensure they never overlap the keyboard, toolbar, media container, or content.
+
+
+
+Make sure add option to copy whole note txt also with tile. Also we can dupe notes.
+
+
+
+### Markdown Editor: Critical Functionality
+
+The Markdown/Tiptap editor is a CORE feature. Thoroughly test every existing editor option and make sure every control is genuinely functional.
+
+- When an option is tapped, its button must visibly show as ACTIVE/SELECTED.
+
+- While active, newly typed text must use that formatting.
+
+- Tapping the active option again must deactivate it, and newly typed text must return to normal formatting.
+
+Example:
+
+Tap Bold → type “xyz” → xyz is bold → tap Bold again → continue typing normally.
+
+Text selection:
+
+- Select any existing text and tap any formatting option to immediately apply that formatting to the entire selected text.
+
+- Support toggling/removing formatting from selected text.
+
+- Preserve mixed formatting correctly.
+
+All existing Markdown editor features must remain functional, including:
+
+Bold, Italic, Underline, Strikethrough, Inline Code, H1/H2/H3/H4, Bullets, Numbered Lists, Checklists, Blockquotes, Code Blocks, Links, Horizontal Dividers, Undo, Redo, and Clear Formatting.
+
+Verify every option individually on both desktop and Android/mobile, including newly typed text, selected text, mixed formatting, cursor positioning, undo/redo, save, reopen, and refresh.
+
+
+
+### Export, Folder Structure & Vault
+
+EXPORT:
+
+- Export the entire Notes library as one ZIP or 7z archive.
+
+- Also allow exporting ONLY:
+
+
+
+
+
+Any selected folder.
+
+
+
+Any selected tag.
+
+
+
+Manually selected notes.
+
+
+
+Archive only.
+
+- Provide toggles for:
+
+
+
+
+
+Include Images/GIFs ON/OFF.
+
+
+
+Include Vault ON/OFF, only while Vault is unlocked.
+
+- Preserve the exact organization and metadata during export.
+
+EXPORT HIERARCHY:
+
+- Organization priority: Folder > Tag > Archive.
+
+- If a note has a folder, keep it inside that folder regardless of its tags/archive state.
+
+- If it has no folder but has tags, organize it under its tag structure.
+
+- Archive is the lowest-priority classification and must never destroy the folder/tag organization.
+
+FOLDER STRUCTURE:
+
+- Every exported note must have its own separate folder.
+
+- The note folder name must use the note title.
+
+- Put the note's Markdown file inside that folder using the same base name, ending in `Notes.md`.
+
+- Example:
+
+`My Note/My NoteNotes.md`
+
+- Every note folder must contain an `attachment/` subfolder when images/GIFs are included.
+
+- Put ALL images and GIFs belonging to that note inside `attachment/`.
+
+- Put the note's tags at the very beginning of the exported note-folder name.
+
+- Example:
+
+`important_work_My Note/`
+
+`important_work_My Note/My NoteNotes.md`
+
+`important_work_My Note/attachment/image.png`
+
+- Preserve folder hierarchy exactly.
+
+- Preserve tags, archive state, note title, formatting, timestamps, and media relationships.
+
+- Never mix attachments or content between different note folders.
+
+VAULT:
+
+- Vault is opened ONLY by typing `open_vault`.
+
+- First use creates the Vault password; later uses require the password.
+
+- Once unlocked, Vault remains open for the entire app session until the app shuts down or the user explicitly locks it.
+
+- Unlocking Vault reveals a separate `VAULT` option in the sidebar containing only Vault notes.
+
+- Unlocking also reveals Vault Settings.
+
+- Vault Settings MUST remain completely hidden while Vault is locked.
+
+- Vault Settings must include:
+
+
+
+
+
+Add/create Vault password.
+
+
+
+Change Vault password.
+
+
+
+Vault export controls.
+
+
+
+Lock Vault.
+
+VAULT EXPORT:
+
+- When Vault is unlocked, provide a dedicated Vault Export option.
+
+- Allow:
+
+
+
+
+
+Export Vault only.
+
+
+
+Include Images/GIFs ON/OFF.
+
+- Normal library export must never include Vault data.
+
+- Vault export controls must not appear while Vault is locked.
+
+- Add a clear `Lock Vault` button inside the Vault section.
+
+- Locking immediately hides the Vault sidebar section and Vault Settings.
+
+CRITICAL:
+
+- Verify full-library, folder-only, tag-only, archive, selected-note, and Vault exports.
+
+- Verify ZIP/7z integrity and correct folder hierarchy.
+
+- Verify attachments stay inside their corresponding note folders.
+
+- Verify no Vault data leaks into normal exports.
+
+- Verify all exported data can be imported/restored without losing organization or media relationships.
+
+
+
+Make sure we have light and dark mode and must work perfectly without conflict
+
+
+
+### Appearance & Customization
+
+Add a comprehensive Appearance section with live, REAL previews.
+
+Support:
+
+- Theme: Light / Dark / OLED Black / System.
+
+- Full-spectrum Accent Color picker + HEX/RGB.
+
+- App-wide Font: Sans / Serif / Monospace / Dyslexic-friendly.
+
+- Adjustable base text size.
+
+- Adjustable line height.
+
+- Note card corner-radius slider.
+
+- Card shadow/elevation slider.
+
+- Note-card transparency.
+
+- Compact / Cozy / Spacious density.
+
+- Grid columns: 1–6 + responsive Auto.
+
+- List ↔ Masonry layout.
+
+- Custom wallpaper/background upload.
+
+- Wallpaper blur and opacity.
+
+- UI animation speed: Instant / Fast / Smooth / Reduced Motion.
+
+- Optional compact/comfortable toolbar density.
+
+- Note-card preview styling.
+
+### REAL LIVE PREVIEW
+
+Every appearance setting MUST show a live example demonstrating exactly how the actual application will look after applying it.
+
+The preview must use the same real components, typography, spacing, colors, cards, shadows, and layout rules as the actual app. Do NOT create fake/mock previews that look different from the real UI.
+
+Changes should update the actual UI immediately and persist after refresh/restart.
+
+### Note Spacing & Layout Safety
+
+In EVERY layout mode, including 1–6 column grids, Masonry, and List View:
+
+- Every Note Card must have consistent visible spacing/gap around it.
+
+- Cards must NEVER touch, overlap, clip into, or visually merge with another card.
+
+- Maintain proper horizontal and vertical gaps even with different card heights.
+
+- Responsive resizing must recalculate spacing correctly.
+
+- Long titles, long text, images, GIFs, and custom fonts must never break the card layout.
+
+- No overflow, collision, clipping, or overlapping UI.
+
+### Appearance Verification
+
+Test EVERY appearance setting individually and in combinations.
+
+For each setting:
+
+1. Change it.
+
+2. Verify the actual UI changes correctly.
+
+3. Verify the live preview matches the actual result.
+
+4. Refresh the app.
+
+5. Confirm the setting persists.
+
+6. Test Android/mobile, tablet, desktop, and ultra-wide layouts.
+
+7. Test combinations of settings for overflow, clipping, and UI collisions.
+
+Do not consider Appearance complete until every setting has been functionally verified.
+
+
+
+### Editor UI Visibility Controls
+
+Add two SEPARATE editor appearance settings:
+
+- **Show/Hide Scroll Navigation Arrows**: independently toggle the floating ↑ / ↓ buttons.
+
+- **Show/Hide Bottom Action Bar**: independently toggle the bottom editor action bar.
+
+These settings must be completely independent. Hiding one must NOT hide or affect the other.
+
+The selected state must persist across notes, app restarts, and refreshes, and the editor layout must automatically reflow without leaving empty gaps or causing overlap.
+
+
+
+### Global Color System & UI Safety
+
+- Replace limited 5–7 color presets with a full-spectrum color picker.
+
+- Allow direct selection of ANY color through a spectrum/HSV color picker.
+
+- Support HEX/RGB input and save custom colors.
+
+- Apply this system consistently to note colors, folders, tags, accents, backgrounds, and other customizable UI elements where appropriate.
+
+- Preserve selected colors after refresh and restart.
+
+CRITICAL UI SAFETY:
+
+- No element may overlap, clip, overflow, or cover another element.
+
+- All layouts must dynamically adapt to content, screen size, keyboard, scrolling, and responsive breakpoints.
+
+- Test narrow Android phones, tablets, desktop, and ultra-wide screens.
+
+- Fix every overflow, collision, clipping, stacking, and z-index/layout issue before completion.
+
+
+
+### Global UI / Visual Design System
+
+Keep the ENTIRE Notes app visually consistent with the supplied screenshots. The screenshots are the primary visual reference for the UI language.
+
+The overall design must be:
+
+- Minimal.
+
+- Clean.
+
+- Dark, modern, and understated.
+
+- Spacious without wasting screen space.
+
+- Rounded cards and containers.
+
+- Thin, subtle borders.
+
+- Simple monochrome line icons.
+
+- Clear typography with strong hierarchy.
+
+- No unnecessary decoration, gradients, excessive colors, or visual clutter.
+
+### Main Screen
+
+- Compact top app bar with hamburger/navigation, search, view toggle, and primary actions.
+
+- Notes displayed as clean rounded Note Cards.
+
+- Consistent spacing between EVERY card in both List and Masonry/Grid views.
+
+- Cards must never touch, overlap, clip, or visually merge.
+
+- Floating Create button should remain compact and easily reachable on mobile.
+
+- Sidebar/navigation should be clean and minimal on desktop and become an appropriate drawer/sheet on mobile.
+
+### Full-Screen Note Editor
+
+Follow the supplied editor screenshots closely:
+
+1. Compact top navigation bar.
+
+2. Back, Pin, Search, and Close/Done controls.
+
+3. Compact Markdown toolbar directly underneath.
+
+4. Self-contained image/GIF container.
+
+5. Title.
+
+6. Markdown/Tiptap content.
+
+7. Floating ↑ / ↓ navigation controls when needed.
+
+8. Compact bottom action bar where appropriate.
+
+Keep the editor content visually continuous and uncluttered.
+
+### Settings
+
+Use the same minimal visual language:
+
+- Large clean Settings heading.
+
+- Horizontally scrollable category tabs on narrow screens.
+
+- Clearly separated settings sections.
+
+- Simple controls, switches, sliders, buttons, and cards.
+
+- Consistent rounded corners and subtle borders.
+
+- No crowded layouts.
+
+### Dialogs / Sheets / Galleries
+
+- Use clean rounded containers with proper spacing.
+
+- Keep dialogs centered and appropriately sized on desktop.
+
+- Use bottom sheets/full-screen surfaces where appropriate on Android.
+
+- Never allow dialogs, menus, keyboards, toolbars, images, or floating controls to overlap incorrectly.
+
+- Every surface must have clear hierarchy and an obvious close/back action.
+
+### Responsive Design
+
+Do NOT simply shrink the desktop UI.
+
+Adapt:
+
+- Navigation.
+
+- Toolbar layout.
+
+- Card columns.
+
+- Spacing.
+
+- Touch targets.
+
+- Dialogs.
+
+- Bottom sheets.
+
+- Editor controls.
+
+- Search controls.
+
+The Android UI should feel like the same product shown in the screenshots, while desktop should intelligently expand into wider layouts.
+
+### Global UI Rule
+
+Every component must have proper spacing and containment.
+
+Absolutely no:
+
+- Accidental overlap.
+
+- Content clipping.
+
+- Horizontal overflow.
+
+- Broken scrolling.
+
+- Elements touching other elements.
+
+- Floating controls covering important content.
+
+- Toolbar/content collisions.
+
+- Images breaking layouts.
+
+- Text escaping containers.
+
+Use the supplied screenshots as the visual reference for proportions, spacing, hierarchy, icon treatment, card styling, and overall interaction feel. Keep all existing functionality unchanged while applying this cohesive visual system.
+
+
+
+### Cross-Platform Architecture — CRITICAL
+
+Build the entire application from **ONE shared source codebase**.
+
+- The same source code must run as the **web app** and be compilable into an **Android APK** using a WebView/PWA/Capacitor-style wrapper.
+
+- Do NOT create separate web and Android implementations.
+
+- All UI, features, business logic, storage, editor, search, export/import, settings, and state management must come from the same codebase.
+
+- Keep platform-specific code to an absolute minimum and isolate it behind small adapters only when technically unavoidable.
+
+- Avoid unnecessary native dependencies that would prevent web deployment.
+
+- The web version and APK must behave and look as identically as their platforms allow.
+
+- Any feature added or fixed must automatically work in both targets because both use the same underlying implementation.
+
+- Structure the project so a developer can build the web version directly and compile the same source into an APK without rewriting functionality.
+
+**ABSOLUTE RULE:** There must be **one source of truth for the application**, not separate web and Android codebases that can drift apart.
+
+
+
+### LOCAL STORAGE SYSTEM — CRITICAL
+
+The app must use **local device storage as the primary and persistent storage system**, especially in the Android APK.
+
+#### Android APK Storage Setup
+
+- On the first launch, BEFORE the app starts normally, show a clean storage setup screen.
+
+- Ask the user to **select the main storage folder/location** where the entire Notes library will live.
+
+- Request only the storage/file permissions actually required by the selected Android storage API.
+
+- Remember the selected folder and use it as the application's single storage root.
+
+- Allow the user to change the storage location later from Storage & Data Settings.
+
+#### Storage Structure
+
+Everything must be stored inside the selected main folder:
+
+- Notes.
+
+- Folders.
+
+- Tags/metadata.
+
+- Ordering/state data.
+
+- `notes.md` files.
+
+- Images.
+
+- GIFs.
+
+- All other attachments.
+
+- Export/import data where applicable.
+
+Each note must have its own properly organized local folder, with its note content and attachments stored together. Preserve folder hierarchy and note relationships exactly.
+
+#### Important
+
+- Do NOT make IndexedDB/LocalStorage the authoritative storage for the Android APK.
+
+- The selected local device folder must be the **source of truth** for Android.
+
+- On restart, reopen the library from that selected folder.
+
+- Never silently switch to another storage location.
+
+- Handle missing, moved, inaccessible, or permission-revoked folders gracefully.
+
+- Never silently delete or overwrite existing user data.
+
+- Autosave changes directly to the local storage system.
+
+#### Web Compatibility
+
+Keep the same architecture and data model for the web version, but respect browser filesystem/security restrictions. Do not pretend a normal browser can access arbitrary phone folders. Use the appropriate browser-supported local storage/file APIs while keeping the same storage abstraction.
+
+**ABSOLUTE RULE:** The APK and web app must use the same application architecture and data model, while the storage layer uses the appropriate platform API. The Android APK must treat the user's selected local folder as the persistent source of truth.
+
+### STORAGE SYNCHRONIZATION — CRITICAL
+
+The local storage must remain the **single source of truth** and must stay synchronized with the UI at all times.
+
+Whenever the user:
+
+- Changes a note title.
+
+- Edits note content.
+
+- Adds an image or GIF.
+
+- Removes an image or GIF.
+
+- Reorders attachments.
+
+- Changes the hero/cover image.
+
+- Changes folders, tags, colors, or other note metadata.
+
+the corresponding local files and metadata must be **immediately and reliably updated**.
+
+The app must never create a stale copy that becomes disconnected from the main note.
+
+- Update the existing note's storage location rather than accidentally creating a duplicate note.
+
+- If the title changes, safely update the note's stored name/folder reference while preserving all content and attachments.
+
+- If an attachment changes, update only the affected attachment while preserving the rest of the note.
+
+- Keep `notes.md`, attachments, metadata, indexes, and UI state synchronized.
+
+- Use atomic/transactional writes where possible to prevent corruption during interrupted saves.
+
+- Autosave every change reliably.
+
+- After every update, verify that reopening the note, refreshing the app, or restarting the APK shows the latest state.
+
+**ABSOLUTE RULE:** Editing a note must never break, detach, duplicate, overwrite incorrectly, or lose the main stored note or any of its attachments.
+
+
+
+Add character counter also it must be very tiny
+
+
+
+Make sure apk icon rightly centred in middel nicely.
+
+### DEVELOPMENT & TEST GATE — ABSOLUTE
+
+After implementing each feature, perform a complete functional and UI test of that feature.
+
+- Test every button, control, interaction, edge case, persistence behavior, and responsive layout.
+
+- If ANY test fails, fix it and retest until it passes.
+
+- Do NOT proceed to the next feature until the current feature has completely passed.
+
+- After adding the next feature, regression-test all previously completed features.
+
+- Never mark a feature complete just because the UI renders or the code compiles.
+
+ONLY proceed when the current feature is fully functional, persistent, responsive, and free of obvious bugs.
+
+After all completion make a pdf file telling all details and features about the project
