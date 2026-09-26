@@ -1,0 +1,326 @@
+# **MARKDOWN MASTERCLASS**
+
+## *A beautiful guide to writing better notes*
+
+> Welcome to the **Notes Markdown Tutorial**.
+> 
+> This page demonstrates every Markdown feature supported by this Notes app.
+> You can **copy, edit, and experiment** with every example below.
+
+---
+
+# **1. Text Styling**
+
+## *Make important ideas stand out*
+
+**Bold text**
+
+Use two asterisks around text to make it **bold**.
+
+*Italic text*
+
+Use one asterisk around text to make it *italic*.
+
+<u>Underlined text</u>
+
+Use `<u>` and `</u>` around text to make it <u>underlined</u>.
+
+~~Strikethrough text~~
+
+Use two tildes around text to ~~cross out~~ something.
+
+---
+
+# **2. Inline Code**
+
+## *Small pieces of technical text*
+
+Use single backticks for `inline code`.
+
+For example:
+
+The shortcut is `Ctrl + S`.
+
+A filename can be written as `notes.md`.
+
+A command can be written as `npm start`.
+
+> **Remember:** Single backticks are for short pieces of code that stay inside a normal sentence.
+
+---
+
+# **3. Headings**
+
+## *Organize your notes with different heading sizes*
+
+# **H1 Heading**
+The largest heading level.
+
+## **H2 Heading**
+A smaller section heading.
+
+### **H3 Heading**
+The smallest heading supported in this tutorial.
+
+Use headings to create a clear structure:
+
+# **Main Topic**
+
+## **Major Section**
+
+### **Small Section**
+
+---
+
+# **4. Bullet Lists**
+
+## *Perfect for simple collections*
+
+- First idea
+- Second idea
+- Third idea
+- Fourth idea
+
+Use a hyphen `-` at the beginning of each line.
+
+> Bullet lists are useful when the order of information does not matter.
+
+---
+
+# **5. Numbered Lists**
+
+## *Use numbers when order matters*
+
+1. Open your note
+2. Write your idea
+3. Format the important parts
+4. Save your work
+
+Numbered lists are useful for **steps, instructions, procedures, and sequences**.
+
+---
+
+# **6. Quotes**
+
+## *Highlight an important statement*
+
+> **Great notes do not just store information. They make information easier to understand.**
+
+Use `>` at the beginning of a line to create a quote.
+
+> You can also use quotes for reminders, definitions, important facts, or memorable ideas.
+
+---
+
+# **7. Fenced Code Blocks**
+
+## *For larger pieces of code*
+
+Use three backticks to create a fenced code block.
+
+```
+const note = "Hello, Notes!";
+const author = "Hapnoid";
+
+console.log(note);
+console.log(author);
+```
+
+This is different from `inline code`.
+
+**Inline code** stays inside a sentence.
+
+```
+Fenced code blocks
+can contain
+multiple lines
+of content.
+```
+
+---
+
+# **8. Links**
+
+## *Connect your notes to the web*
+
+[Open the Notes tutorial](https://example.com)
+
+The format is:
+
+[Name of link](Link)
+
+The text inside the first pair of brackets becomes the clickable name.
+
+The address inside the parentheses becomes the destination.
+
+---
+
+# **9. Horizontal Rules**
+
+## *Create strong visual separation*
+
+Use three hyphens to create a horizontal divider.
+
+---
+
+---
+
+A horizontal rule is useful when you want to separate two major parts of a note.
+
+---
+
+# **10. Tables**
+
+## *Turn structured information into a clean grid*
+
+| Feature | Syntax | Purpose |
+| --- | --- | --- |
+| **Bold** | `**text**` | Emphasis |
+| *Italics* | `*text*` | Style |
+| <u>Underline</u> | `<u>text</u>` | Underline |
+| ~~Strike~~ | `~~text~~` | Cross out |
+| `Code` | `` `text` `` | Inline code |
+| **Heading** | `# text` | Structure |
+| **Bullet** | `- text` | Unordered list |
+| **Number** | `1. text` | Ordered list |
+| **Quote** | `> text` | Highlight |
+| **Code block** | `` ```text``` `` | Multiline code |
+| **Link** | `[name](link)` | Web link |
+| **Divider** | `---` | Separation |
+| **Table** | `| A | B |` | Structured data |
+
+---
+
+# **11. Combining Markdown**
+
+## *Mix multiple styles together*
+
+**<u>*~~This single sentence uses bold, underline, italics, and strikethrough together.~~*</u>**
+
+This works because several formatting tags can be placed around the same text.
+
+Another example:
+
+> **<u>*Important: read this carefully.*</u>**
+
+And another:
+
+**Project status:** *almost finished* → `v1.0` → ~~old version~~
+
+---
+
+# **12. A Real Notes Example**
+
+## *Putting everything together*
+
+# **PROJECT NIGHTFALL**
+
+> **Goal:** Build a simple, fast, and beautiful notes system.
+
+### **Mission**
+
+- Capture ideas
+- Organize information
+- Connect useful resources
+- Keep everything readable
+
+### **Workflow**
+
+1. Create a note
+2. Add a clear title
+3. Write the main information
+4. Highlight important details
+5. Add links and references
+6. Review the final note
+
+---
+
+### **Technical Example**
+
+The application can be started with `npm start`.
+
+```
+const app = "Notes";
+const version = "1.0";
+
+console.log(`${app} ${version} is running.`);
+```
+
+---
+
+### **Quick Reference**
+
+| Markdown | Result |
+| --- | --- |
+| `**text**` | **Bold** |
+| `*text*` | *Italics* |
+| `<u>text</u>` | <u>Underline</u> |
+| `~~text~~` | ~~Linecut~~ |
+| `` `text` `` | `Inline code` |
+| `# text` | H1 |
+| `## text` | H2 |
+| `### text` | H3 |
+| `- text` | Bullet |
+| `1. text` | Number |
+| `> text` | Quote |
+| `` ```text``` `` | Fenced code |
+| `[name](link)` | Link |
+| `---` | Divider |
+| `| A | B |` | Table |
+
+---
+
+# **13. The Ultimate Markdown Example**
+
+**<u>*~~Everything can be combined.~~*</u>**
+
+> **<u>*Markdown turns plain text into structured notes.*</u>**
+
+- **Bold** for important information
+- *Italics* for subtle emphasis
+- <u>Underline</u> for visual attention
+- ~~Strikethrough~~ for removed information
+- `Inline code` for short technical terms
+
+1. **Plan**
+2. *Write*
+3. <u>Format</u>
+4. ~~Delete the unnecessary parts~~
+
+---
+
+| Style | Example | Best Use |
+| --- | --- | --- |
+| **Bold** | **Important** | Strong emphasis |
+| *Italics* | *Note* | Soft emphasis |
+| <u>Underline</u> | <u>Key point</u> | Visual attention |
+| ~~Strike~~ | ~~Old idea~~ | Removed content |
+| `Code` | `Ctrl + S` | Technical text |
+
+---
+
+```
+NOTES APP
+
+WRITE
+  ↓
+FORMAT
+  ↓
+ORGANIZE
+  ↓
+UNDERSTAND
+  ↓
+CREATE
+```
+
+[Return to the beginning](https://example.com)
+
+---
+
+# **FINISH**
+
+> **Your notes are not just a place to store information.**
+>
+> **They are a workspace for turning information into ideas.**
+
+**<u>*~~Experiment with every format and make the page yours.~~*</u>**
