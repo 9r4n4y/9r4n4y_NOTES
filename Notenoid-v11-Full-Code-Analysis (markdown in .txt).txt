@@ -1,0 +1,2297 @@
+# Notenoid v11 — Full Codebase Analysis
+
+**Source:** `Notenoid-v11-source.zip`
+**Package:** `notenoid@11.0.0`
+**Analysis date:** 2026-09-27
+**Scope:** complete static read of every source file in the repository
+**Method:** every claim below was read directly out of the source. File paths and
+line numbers are given so each statement can be checked.
+
+---
+
+## Table of contents
+
+1. [What Notenoid is](#1-what-notenoid-is)
+2. [Tech stack & dependencies](#2-tech-stack--dependencies)
+3. [Architecture](#3-architecture)
+4. [The Markdown editor — full deep dive](#4-the-markdown-editor--full-deep-dive) ← *the core of this report*
+   - 4.1 [Two modes, one document](#41-two-modes-one-document)
+   - 4.2 [Toolbar inventory — every button](#42-toolbar-inventory--every-button)
+   - 4.3 [The action table: what each button emits](#43-the-action-table-what-each-button-emits)
+   - 4.4 [Rendering pipeline (preview)](#44-rendering-pipeline-preview)
+   - 4.5 [Exact edit ↔ preview scroll anchoring](#45-exact-edit--preview-scroll-anchoring)
+   - 4.6 [Custom undo/redo history](#46-custom-undoredo-history)
+   - 4.7 [Find-in-note](#47-find-in-note)
+   - 4.8 [Math / KaTeX + the math preprocessor](#48-math--katex--the-math-preprocessor)
+   - 4.9 [Task lists (checkboxes)](#49-task-lists-checkboxes)
+   - 4.10 [Per-image sizing inside markdown](#410-per-image-sizing-inside-markdown)
+   - 4.11 [Attachment URL ↔ path round-trip](#411-attachment-url--path-round-trip)
+   - 4.12 [Typing performance & throttling](#412-typing-performance--throttling)
+   - 4.13 [Keyboard handling](#413-keyboard-handling)
+   - 4.14 [Every setting that affects markdown](#414-every-setting-that-affects-markdown)
+   - 4.15 [Markdown support matrix](#415-markdown-support-matrix)
+5. [The image system — full deep dive](#5-the-image-system--full-deep-dive)
+6. [Settings inventory](#6-settings-inventory)
+7. [Storage & filesystem layer](#7-storage--filesystem-layer)
+8. [State management](#8-state-management)
+9. [UI components & views](#9-ui-components--views)
+10. [Platform / Android](#10-platform--android)
+11. [Build, export & deploy](#11-build-export--deploy)
+12. [On-disk data formats](#12-on-disk-data-formats)
+13. [Findings, risks & notable behaviours](#13-findings-risks--notable-behaviours)
+14. [Appendix A — complete file map](#appendix-a--complete-file-map)
+15. [Appendix B — quick reference](#appendix-b--quick-reference)
+
+---
+
+## 1. What Notenoid is
+
+Notenoid is a **local-first, Google Keep–style notes app with a full Markdown
+editor**, built as a single Next.js codebase that compiles twice:
+
+- as a **static web app** (pure client-side, no server), and
+- as an **Android APK** — the same static bundle copied into
+  `android/assets/` and served by a native `WebView` shell over the private
+  origin `https://appassets.androidplatform.net`.
+
+The defining architectural decision: **there is no database and no server of
+any kind.** Every note is a real folder on the user's own disk containing a
+real `node.md` file. `node.md` is the single source of truth for content *and*
+metadata. There is no IndexedDB note store, no SQLite, no JSON note database.
+Copy the root folder to another machine, open it in Obsidian, and everything
+still works.
+
+```
+<Root>/
+├── Archive_Work_important_Shopping List/   ← folder name encodes metadata
+│   ├── node.md                            ← YAML front-matter + Markdown body
+│   └── attachment/                        ← created on demand
+│       ├── image.png
+│       └── animation.gif
+├── Notes/                                 ← plain title when no metadata applies
+│   └── node.md
+└── .notes/
+    └── config.json                        ← app metadata ONLY (folders + labels)
+```
+
+---
+
+## 2. Tech stack & dependencies
+
+### 2.1 Framework & runtime
+
+| Layer | Choice | Version | Notes |
+|---|---|---|---|
+| Framework | Next.js | `^16.1.1` | App Router, **static export only** |
+| UI runtime | React / React DOM | `^19.0.0` | |
+| Language | TypeScript | `^5` | `strict` (see `tsconfig.json`) |
+| Package manager | bun / pnpm / npm | — | three lockfiles present: `bun.lock`, `pnpm-lock.yaml`, `package-lock.json` |
+| Build output | standalone + static export | — | `next build`, `STATIC_EXPORT=true next build` |
+
+There are **no server routes**, no API handlers, no middleware, no database
+driver. Everything runs in the client.
+
+### 2.2 State management
+
+| Library | Version | Where |
+|---|---|---|
+| `zustand` | `^5.0.6` | the main notes/folders/labels/vault store (`src/components/keep/store.ts`) |
+| React `useSyncExternalStore` | built-in | the settings store (`settings-store.ts`) — a hand-rolled external store, *not* zustand |
+| React Context | built-in | `theme-provider.tsx` (thin wrapper over `next-themes`) |
+
+### 2.3 Markdown rendering
+
+| Library | Version | Role |
+|---|---|---|
+| `react-markdown` | `^10.1.0` | markdown → React (the preview renderer) |
+| `remark-gfm` | `^4.0.1` | GitHub-Flavored Markdown: tables, task lists, strikethrough, autolinks |
+| `remark-math` | `^6.0.0` | `$…$` / `$$…$$` → math nodes |
+| `rehype-raw` | `^7.0.0` | allows raw HTML in markdown (needed for `<u>`, `<u>` underline, and the `<div class="img-grid">` image grids) |
+| `rehype-katex` | `^7.0.1` | math nodes → KaTeX HTML |
+| `katex` | `^0.18.9` | the actual TeX typesetter |
+| `remark`/`rehype`/`unified` | transitive | the AST pipeline |
+
+**Important:** the editor is **not** a WYSIWYG/rich-text editor. There is no
+TipTap, no ProseMirror, no Slate, no Lexical. Edit mode is a plain
+`<textarea>` holding raw markdown. This is a deliberate design decision
+recorded in the file header of `MarkdownEditor.tsx:51-65`:
+
+> The persisted document remains plain Markdown. Edit mode is intentionally a
+> transparent textarea so existing files, folders, labels, task lists and
+> front-matter stay untouched.
+
+(The release notes and some stale code comments still mention `tiptap-markdown`
+and TipTap — that was a past implementation. The current editor is hand-written
+on top of `react-markdown` + a textarea. Those comments are leftovers.)
+
+### 2.4 UI primitives
+
+`shadcn/ui`-style components built on **Radix UI**, vendored into
+`src/components/ui/` (not fetched at build time):
+
+`@radix-ui/react-alert-dialog`, `-dialog`, `-dropdown-menu`, `-label`,
+`-popover`, `-select`, `-separator`, `-slider`, `-slot`, `-switch`, `-tabs`,
+`-tooltip`
+
+Supporting: `class-variance-authority`, `clsx`, `tailwind-merge`,
+`tailwindcss-animate`, `lucide-react` (icons), `sonner` (toasts),
+`next-themes` (light/dark/system).
+
+### 2.5 Grid / drag & drop
+
+`muuri@^0.9.5` — a real grid/animation engine. Replaced a hand-rolled drag
+engine in V5.2. See [`MuuriGrid.tsx`](src/components/keep/MuuriGrid.tsx:10-50)
+for the full rationale.
+
+### 2.6 Other
+
+| Library | Role |
+|---|---|
+| `jszip@^3.10.2` | ZIP export / import |
+| `crypto.subtle` (WebCrypto) | PBKDF2-SHA256 password hashing for the vault |
+| `createImageBitmap` + `<canvas>` | client-side image downscaling |
+| `URL.createObjectURL` | attachment display URLs (session-only) |
+| `ResizeObserver`, `requestAnimationFrame` | scroll pinning & layout settle |
+
+### 2.7 Code size
+
+17,986 lines across 77 `.ts`/`.tsx`/`.css` source files. Largest files:
+
+| File | LOC | Role |
+|---|---|---|
+| `components/keep/editor/MarkdownEditor.tsx` | 1472 | the markdown editor |
+| `components/keep/store.ts` | 1211 | zustand store |
+| `components/keep/NoteEditorView.tsx` | 1150 | the full-screen note editor |
+| `app/globals.css` | 1022 | all styling incl. markdown prose + image grids |
+| `components/keep/SettingsDialog.tsx` | 1021 | every app setting |
+| `components/keep/ImageEditorDialog.tsx` | 780 | crop / draw / text image editor |
+| `lib/themes.ts` | 715 | 34 themes |
+| `components/keep/NoteCard.tsx` | 683 | the note card |
+| `components/keep/MuuriGrid.tsx` | 632 | drag & drop grid |
+| `core/repo.ts` | 623 | the note repository |
+| `components/keep/KeepApp.tsx` | 531 | app shell |
+| `core/markdown.ts` | 394 | markdown ⇄ note model, safe naming |
+
+---
+
+## 3. Architecture
+
+Four layers, strictly one-directional:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ UI            src/components/keep/**                          │
+│                KeepApp → views → cards / editor / dialogs      │
+├───────────────────────────────────────────────────────────────┤
+│ State         src/components/keep/store.ts   (zustand)        │
+│                optimistic updates, 600 ms debounced autosave,  │
+│                draft materialisation, vault, search, views    │
+│                settings-store.ts (useSyncExternalStore)       │
+├───────────────────────────────────────────────────────────────┤
+│ Core          src/core/**        (platform-agnostic)           │
+│                repo.ts   NoteRepository — every note op       │
+│                markdown.ts  note ⇄ node.md, tasks, safe names  │
+│                frontmatter.ts YAML subset round-trip           │
+├───────────────────────────────────────────────────────────────┤
+│ Adapters      src/core/fs/**                                  │
+│                FSAdapter ← WebFSAdapter (File System Access)   │
+│                           ← OpfsFSAdapter (OPFS)              │
+│                           ← AndroidFSAdapter (JS bridge)       │
+├───────────────────────────────────────────────────────────────┤
+│ Platform      Browser        │  Android WebView shell          │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**The core never knows which platform it runs on.** All paths handed to the
+adapters are *root-relative POSIX paths* (`"Shopping List/node.md"`), never
+absolute. `src/core/fs/adapter.ts:1-12` states this as a contract.
+
+### 3.1 Data flow — typing to disk
+
+1. User types in the `<textarea>` → local `draft` state updates immediately.
+2. The editor **throttles** store pushes to leading+trailing 140 ms
+   (`MarkdownEditor.tsx:413-429`) instead of pushing every keystroke.
+3. The store applies the patch **optimistically** to its in-memory note and
+   schedules a per-note debounced flush of **600 ms**
+   (`store.ts:606-640`).
+4. `NoteRepository.saveNote()` regenerates `node.md` and writes it
+   (folder rename happens first if the storage name changed).
+5. Explicit flush points force the pending save: editor close, tab hidden
+   (`visibilitychange`), `beforeunload`, Android `onDestroy`
+   (`KeepApp.tsx:153-166`).
+
+Failed writes are **not** dropped — they re-queue with linear backoff up to
+6 times before showing an error toast (`store.ts:660-680`). This was a V7 fix.
+
+### 3.2 Draft notes
+
+A brand-new note lives **in memory only** (`draftNote`, id `DRAFT_ID =
+"__draft__"`) and materialises to disk on a **500 ms debounce** once it has
+real content. It does *not* materialise on the first keystroke — that used to
+create a folder named `"R"` (for a one-character title) and then rename it over
+and over, each rename a race that could orphan folders (`store.ts:183-193`).
+Closing the editor, or app unload, materialises immediately. An abandoned empty
+note never touches the filesystem.
+
+### 3.3 Layering discipline
+
+The UI never calls an FS adapter. It calls store actions. The store is the only
+thing that talks to `NoteRepository`. The repository is the only thing that
+talks to `FSAdapter`.
+
+---
+
+## 4. The Markdown editor — full deep dive
+
+**File:** `src/components/keep/editor/MarkdownEditor.tsx` (1,472 lines)
+**Mounted by:** `src/components/keep/NoteEditorView.tsx:808-828`
+**Also used by:** `FoldersView.tsx` (folder preview notes)
+
+This is the single most feature-dense file in the app. Everything below was
+read line by line.
+
+### 4.1 Two modes, one document
+
+The editor has exactly **two modes**, toggled by the first toolbar button:
+
+- **Preview mode** (`preview === true`) — `react-markdown` renders the document
+  into styled HTML. Task checkboxes, links, code-copy buttons and image sizing
+  are all interactive here.
+- **Edit mode** (`preview === false`) — a plain `<textarea>` holding the raw
+  markdown source.
+
+The document is one string. Toggling modes never transforms it — it only
+changes what renders it. That is the guarantee that makes the round-trip
+lossless.
+
+**Default is preview.** `initialPreview = true` (`MarkdownEditor.tsx:369`), and
+`NoteEditorView` passes `initialPreview` explicitly (`NoteEditorView.tsx:827`).
+
+**Mode survives remounts.** A module-level `let lastPreviewState: boolean | null`
+(`MarkdownEditor.tsx:251`) holds the mode outside React. This exists because of
+a V4 bug: the editor used to be keyed on `editorNoteId`, so the instant a new
+draft materialised to disk the whole component remounted, resetting the mode —
+typing the first word would "auto-switch" edit ↔ preview. The key was removed
+(`NoteEditorView.tsx:803-807`) *and* the state was hoisted to module scope, so
+mode and scroll are now changed by nothing but the user.
+
+### 4.2 Toolbar inventory — every button
+
+The toolbar is a horizontally scrollable strip (`overflow-x-auto`, hidden
+scrollbar) pinned to the top of the editor. Buttons are grouped by
+`<span>` dividers. Source: `MarkdownEditor.tsx:149-219`.
+
+`ToolButton` (`:92-121`) is a plain `<button>` with:
+- `aria-label` + `title` = the same human string,
+- `onMouseDown={e => e.preventDefault()}` — **critical**: it stops the textarea
+  from losing selection before the click handler reads it,
+- an `active` state (used only by the preview toggle),
+- h-8 / min-w-8, rounded, hover tint, `disabled:opacity-30`.
+
+| # | Icon | Label (tooltip) | Dispatches | Group |
+|---|---|---|---|---|
+| 1 | Eye / PenLine | "Preview rendered note" / "Edit Markdown" | `onTogglePreview` | — |
+| 2 | Bold | Bold | `onAction("bold")` | inline |
+| 3 | Italic | Italic | `onAction("italic")` | inline |
+| 4 | Underline | Underline | `onAction("underline")` | inline |
+| 5 | Strikethrough | Strikethrough | `onAction("strike")` | inline |
+| 6 | Code | Inline code | `onAction("code")` | inline |
+| — | — | *divider* | | |
+| 7 | Heading1 | Heading 1 | `onAction("h1")` | block |
+| 8 | Heading2 | Heading 2 | `onAction("h2")` | block |
+| 9 | Heading3 | Heading 3 | `onAction("h3")` | block |
+| 10 | Braces (rotated) | Body text | `onAction("paragraph")` | block |
+| — | — | *divider* | | |
+| 11 | List | Bullet list | `onAction("ul")` | list |
+| 12 | ListOrdered | Numbered list | `onAction("ol")` | list |
+| 13 | ListChecks | Checklist | `onAction("todo")` | list |
+| 14 | Quote | Quote | `onAction("quote")` | list |
+| 15 | Braces | Code block | `onAction("codeblock")` | list |
+| — | — | *divider* | | |
+| 16 | Link2 | Add link | **popover** → `onAction("link", url, label)` | insert |
+| 17 | Link2Off | Remove link | `onAction("remove-link")` | insert |
+| 18 | ImagePlus | Add image (saved to attachments) | `onPickImages()` → file picker | insert |
+| 19 | Images | Insert image at cursor — several become a tidy grid | `onInsertAtCursor()` → popover | insert |
+| 20 | Minus | Divider | `onAction("hr")` | insert |
+| 21 | Table2 | Insert table | `onAction("table")` | insert |
+| 22 | RemoveFormatting | Clear formatting | `onAction("clear")` | insert |
+| 23 | ListPlus | Choose multiple formats | **popover** → `onAction("multi", csv)` | insert |
+| — | — | *divider* | | |
+| 24 | Undo2 | Undo | `onAction("undo")` | history |
+| 25 | Redo2 | Redo | `onAction("redo")` | history |
+| — | `<span className="flex-1" />` | *spacer pushes the rest right* | | |
+
+**25 `ToolButton` controls in total** — 23 that act directly, plus 2 that open
+a popover (Add link, Multiple formats) — dispatching **21 distinct action
+names**.
+
+> Note: the README claims H1–H4. The toolbar only offers H1–H3; H4–H6 render
+> in the preview and can be typed manually. This is a doc/code mismatch.
+
+### 4.2.1 The two popovers
+
+**Add link** (`:172-195`) — a Radix `Popover` with two inputs:
+- *Link text (optional)* — becomes the label; falls back to the selection,
+- *Link URL* — `inputMode="url"`, focused + auto-selected on open via
+  `onOpenAutoFocus` + `requestAnimationFrame`.
+- Enter applies, Escape closes. The URL field is cleared on every open.
+- `applyLink()` is a no-op on an empty/whitespace URL.
+- Uses `modal` + `z-[70]` + `w-[min(92vw,26rem)]` so it stays above the sticky
+  toolbar and fits phones. (V8 fix: this used to render behind the toolbar and
+  was un-tappable.)
+
+**Choose multiple formats** (`:202-213`) — a checkbox grid, 2 columns, of 8
+options: `bold, italic, underline, strike, code, h1, h2, h3`. Confirm emits
+`onAction("multi", selection.join(","))`. This is the only way to apply
+e.g. bold+italic+h2 in one action.
+
+### 4.3 The action table: what each button emits
+
+`action(name, replacement?, label?)` — `MarkdownEditor.tsx:1019-1091`.
+
+| Action | Implementation | Emits |
+|---|---|---|
+| `bold` | `wrap("**","**","")` | `**text**` |
+| `italic` | `wrap("*","*","")` | `*text*` |
+| `underline` | `wrap("<u>","</u>","")` | `<u>text</u>` |
+| `strike` | `wrap("~~","~~","")` | `~~text~~` |
+| `code` | `` wrap("`","`","") `` | `` `text` `` |
+| `codeblock` | `wrap("```\n","\n```","")` | ` ```\ntext\n``` ` |
+| `h1` | `prefix("# ")` | line prefixed `# ` |
+| `h2` | `prefix("## ")` | line prefixed `## ` |
+| `h3` | `prefix("### ")` | line prefixed `### ` |
+| `paragraph` | `paragraph()` | strips the leading heading/list/quote marker |
+| `ul` | `prefix("- ")` | line prefixed `- ` |
+| `ol` | `prefix("1. ")` | line prefixed `1. ` |
+| `todo` | `prefix("- [ ] ")` | line prefixed `- [ ] ` |
+| `quote` | `prefix("> ")` | line prefixed `> ` |
+| `hr` | `replaceSelection("\n\n---\n")` | blank line, `---`, blank line |
+| `table` | `table()` | 3×3 GFM table skeleton |
+| `link` | `replaceSelection(...)` | `[label](url)` or bare label |
+| `remove-link` | regex `/\[([^\]]+)\]\(([^)]+)\)/g → "$1"` | strips link, keeps text |
+| `clear` | `stripMarkdownFormat` (+ `stripLineLevel`) | plain text |
+| `multi` | ordered composition | combined wrappers |
+| `undo` / `redo` | `doUndo()` / `doRedo()` | history jump |
+| `replace-selection` | raw replace | *(internal)* |
+
+#### 4.3.1 `wrap()` — inline formatting (`:922-933`)
+
+```ts
+const s = el.selectionStart, e = el.selectionEnd;
+const selected = draft.slice(s, e) || placeholder;   // placeholder is "" for all toolbar uses
+const replacement = `${before}${selected}${after}`;
+```
+
+Then a **caret rule** that matters a lot in practice:
+- **no selection** → caret goes *between* the marks: `s + before.length`
+- **with selection** → caret goes *after* the whole formatted text:
+  `s + replacement.length`
+
+The selection is deliberately **collapsed** (not left highlighted) — the
+comment at `:928-930` notes that leaving it highlighted caused the next
+keystroke to replace the text. Caret restore happens in a
+`requestAnimationFrame` after `el.focus()`.
+
+#### 4.3.2 `prefix()` — line-level formatting (`:935-955`)
+
+Two distinct behaviours:
+
+**With a selection:** every line in the selected span gets the prefix, but
+**idempotently** — `line.startsWith(prefix) ? line : prefix + line`. Re-pressing
+H2 on an already-H2 line is a no-op rather than stacking `## ## `.
+
+**With no selection (collapsed caret):** it inserts the prefix at the start of
+the current line and leaves the caret immediately after it — so the common
+"press H2 then type" flow works. It also reads any existing line marker via
+`/^(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s+)/` and suppresses a new prefix when the
+line is *already* that kind of block (heading on a heading, `1. ` on a
+numbered line) — i.e. headings behave as a radio group, not a stack.
+
+#### 4.3.3 `paragraph()` — strip to body text (`:957-967`)
+
+Removes the leading marker
+`/^(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s+)/` from the current line and keeps the
+caret at the same character offset, clamped to the new line length.
+
+#### 4.3.4 `table()` (`:1010-1017`)
+
+Inserts a fixed 3-column skeleton, adding a leading blank line separator when
+the caret is mid-line:
+
+```markdown
+| Column 1 | Column 2 | Column 3 |
+| --- | --- | --- |
+| Row 1 | Value | Value |
+| Row 2 | Value | Value |
+```
+
+#### 4.3.5 `clear` — clear formatting (`:1069-1087`, helper `stripLineLevel` `:1096-1104`)
+
+This is the most carefully written action, because "clear formatting" can
+easily destroy content.
+
+- **With a selection** → only the selected span is rewritten. Each line inside
+  is passed through `stripLineLevel`, which strips `> `, `#{1,6} `, `- [ ] `,
+  `- `, `1. ` markers — **but only for lines that actually begin inside the
+  selection**. A selection starting mid-line keeps its leading list marker
+  (`atLineStart` check at `:1076`).
+- **Without a selection** → the entire note is stripped.
+
+Then `stripMarkdownFormat()` from `core/markdown.ts:311-352` removes the
+character-level syntax. Its contract, documented at `markdown.ts:298-310`:
+
+| Stripped | Kept |
+|---|---|
+| `**bold**`, `__bold__` | fenced code blocks (verbatim) |
+| `*italic*`, `_italic_` (with a snake_case guard) | inline code span *text* (backticks removed, content kept) |
+| `~~strike~~` | `![alt](…)` images |
+| `<u>` `</u>` | `[…](attachment/…)` links |
+| `#` headings, `>` quotes | tables |
+| `- `, `1. `, `- [ ] ` line prefixes | |
+| `---` horizontal rules | |
+| `[text](url)` → `text` | |
+
+The protection mechanism is a placeholder swap: matched segments are moved into
+a `protectedSegments[]` array and replaced with `\u0000<index>\u0000` sentinels,
+then restored at the end (`markdown.ts:312-313, 350`). The italic-underscore
+rule uses a lookbehind/lookahead `(?<![\w\\])_(?=\S)([^_]*?\S)_(?!\w)` so
+`snake_case_names` are never mangled.
+
+The final `[*~]+` sweep (`:347`) removes leftover markers the user happened to
+select, and `[uo]` tag removal handles underline.
+
+#### 4.3.6 `multi` — combined formatting (`:1035-1058`)
+
+Wrappers are **composed in a specific order that is not alphabetical**. The
+loop prepends inline marks to `before` and appends to `after`, and headings
+*overwrite* `before`:
+
+```ts
+for (const format of formats) {
+  if (format === "bold")    { before += "**";   after = "**"   + after; }
+  else if (format === "italic") { before += "*"; after = "*"    + after; }
+  else if (format === "underline") { before += "<u>"; after = "</u>" + after; }
+  else if (format === "strike"){ before += "~~";  after = "~~"  + after; }
+  else if (format === "code")  { before += "`";   after = "`"   + after; }
+  else if (format === "h1") before = "# "   + before;   // heading goes OUTERMOST
+  else if (format === "h2") before = "## "  + before;
+  else if (format === "h3") before = "### " + before;
+}
+```
+
+Result: `## **bold and *italic***` — valid nested markdown, and headings land
+outside the inline marks. Selection order in the checkbox UI does not matter.
+
+### 4.4 Rendering pipeline (preview)
+
+```
+draft (string)
+   │
+   ├─ toDisplay()          :658-664   attachment/ paths → blob: object URLs
+   │
+   ├─ preprocessMathMarkdown()        (only if settings.mathEnabled)
+   │                                  lib/math-pre.ts — see §4.8
+   │
+   ├─ search highlight injection      :1122-1128  (only if preview && query)
+   │                                  wraps matches in <mark class="search-hit">
+   │
+   └─ <ReactMarkdown>                 :1310
+        remarkPlugins : [remarkGfm, (remarkMath if mathEnabled)]
+        rehypePlugins : [rehypeUpgradeDisplayMath, rehypeRaw, (rehypeKatex if mathEnabled)]
+        urlTransform  : previewUrlTransform
+        components    : { p, h1-h6, ul, ol, blockquote, hr, div, table, pre, code, input, img, a }
+```
+
+#### 4.4.1 `previewUrlTransform` (`:291-296`)
+
+`react-markdown` sanitises URLs by default, which stripped `blob:` and
+`attachment/` and made every inline image render as an "unavailable" chip.
+This override allow-lists:
+- `blob:` URLs
+- `data:image/` URLs
+- `attachment/` paths
+- any colon-free relative path matching `/^\/?[\w.@%-]+(\/[\w.@%-]*)*$/`
+
+Everything else still goes through `defaultUrlTransform`, so `javascript:` and
+`vbscript:` links stay blocked. **The security boundary is preserved.**
+
+#### 4.4.2 `rehypeUpgradeDisplayMath` (`:332-354`)
+
+`remark-math` only marks *fenced* `$$` blocks (on their own lines) as display
+math — a single-line `$$x=1$$` stays inline. Obsidian, GitHub and Pandoc all
+render it as a display block. This custom rehype plugin walks the hast tree,
+finds elements with class `math-inline` whose raw source (looked up via
+`node.position.start.offset` into `file.value`) **starts with `$$`**, and
+swaps the class to `math-display`. It runs **before** `rehype-raw` so source
+positions are still intact.
+
+#### 4.4.3 Custom component overrides
+
+**Block elements with source lines** — `lineBlock(tag)` (`:314-322`) wraps
+`p, h1…h6, ul, ol, blockquote, hr` to attach `data-src-line={node.position.start.line}`.
+This is the backbone of the scroll-anchoring system (§4.5).
+
+**`div` (`:1333-1346`)** — detects `className` containing `img-grid`. For a
+grid it: reads `data-size`, applies `width: {size}%`, wires the long-press /
+context-menu handlers, and renders the size menu. Non-grid divs pass through.
+
+**`table` (`:1347-1355`)** — wraps in `.md-table-wrap` (an `overflow-x: auto`
+scroller) so wide tables scroll instead of breaking layout.
+
+**`pre` (`:1356-1369`)** — wraps in `.md-code-wrap` and adds a **Copy** button
+that calls `navigator.clipboard.writeText`. The button shows "Copied" for
+1,400 ms via `copiedCode` state (`:1106-1114`). Clipboard failure is swallowed
+with a comment noting restricted WebViews.
+
+**`input` (`:1371-1392`)** — the GFM task checkbox. **V4 fix:** react-markdown
+renders GFM task checkboxes with `disabled`, which made ticking impossible in
+the preview. The `disabled` prop is destructured *out* and discarded, and an
+`onChange` is attached that:
+1. finds the index of this checkbox among all `.md-preview input[type=checkbox]`,
+2. **captures the current scroll anchor** (`captureAnchor()`),
+3. calls `updateDraft(toggleTaskLine(draft, index, checked))`.
+
+Capturing the anchor first is what stops the viewport from jumping when a
+checkbox is ticked (the list re-renders with a different height).
+
+**`img` (`:1393-1410`)** — resolves `attachment/` → display URL, renders a
+`"unavailable"` placeholder span when it can't resolve, and wires long-press
+sizing + click → lightbox. Full detail in §4.10 and §5.
+
+**`a` (`:1411-1441`)** — three behaviours:
+1. **`attachment/` href** → rendered as an `<img>`, not a link. Legacy notes
+   that stored images as `[filename](attachment/…)` instead of `![alt](…)` are
+   therefore displayed correctly. Clicking opens the lightbox.
+2. **`blob:` / `data:` href** → passed through.
+3. **normal links** → URL is normalised: `https?://`, `mailto:`, `tel:`,
+   `sms:`, `geo:` pass through; a bare `www.…` or a bare `domain.tld` gets
+   `https://` prepended; everything else is left alone. Always
+   `target="_blank" rel="noopener noreferrer"`.
+
+### 4.5 Exact edit ↔ preview scroll anchoring
+
+**This is the most sophisticated subsystem in the editor** (V5 → V6, roughly
+300 lines: `:256-300`, `:388-395`, `:447-656`).
+
+**The problem it solves:** edit mode and preview mode have completely
+different heights. A raw `scrollTop` restore lands you somewhere else
+entirely. V5 fixed this with a text heuristic; V6 replaced it with an exact
+mapping.
+
+**The mechanism:**
+
+1. `react-markdown` gives every node its markdown position. The `lineBlock()`
+   component surfaces `position.start.line` as a **`data-src-line`** attribute
+   on every block element.
+2. That gives a **lossless two-way mapping** between textarea line numbers and
+   rendered blocks.
+
+`ModeAnchor` (`:272-282`):
+```ts
+interface ModeAnchor {
+  from: "edit" | "preview";
+  ratio: number;        // viewport probe as a fraction of scroll height
+  lineIndex: number;    // 0-based markdown line at the probe
+  blockSrcLine: number; // 1-based source line of the block at the probe
+  blockOffset?: number; // exact vertical offset inside that block
+}
+const PROBE_RATIO = 0.35;   // the probe sits 35% down the viewport
+```
+
+**Capture — `captureAnchor()` (`:555-600`):**
+- From **edit**: read the computed `line-height`, divide the probe's Y offset by
+  it, floor → the markdown line index.
+- From **preview**: find the block whose bottom edge passes the probe, read its
+  `data-src-line`, and record the exact pixel offset inside that block.
+
+**Restore — `makeAnchorGetter()` (`:517-552`):**
+- Into **preview**: scan `getLineBlocks()` for the *last* block whose
+  `data-src-line` is ≥ the captured line, then compute the scroll position that
+  puts that block (plus the recorded intra-block offset) at the probe.
+- Into **edit**: `taTop + lineIndex × lineHeight − clientHeight × ratio`.
+
+**The settle-pin — `startScrollPin()` (`:451-499`):** restored scroll is not
+trusted to stick. Freshly rendered content is still settling — async images,
+web fonts, code highlighting all change the height after the scroll is applied,
+which used to clamp the restore to 0 and dump the user at the top. So:
+
+- A `requestAnimationFrame` loop re-applies the target every frame, clamped to
+  `scrollHeight - clientHeight`.
+- A `ResizeObserver` on the container **and its first child** resets a
+  "stable frames" counter whenever the content resizes.
+- It stops when the position has held steady for **45 frames**, after **120
+  frames** (~2 s) maximum, or **immediately** if the user scrolls more than
+  **6 px** away from the pinned position (`:465-467`, `:475`). The user always
+  wins, instantly.
+- `pinTargetRef` (`:395`) lets a capture that happens *during* the pin read the
+  **intended** position rather than the transient DOM one.
+
+`runAnchorRestore()` runs in an effect with **no dependency array** (`:1297-1299`)
+— after *every* render. That is deliberate: any render that must not move the
+viewport (mode switch, image resize, task tick) re-pins it.
+
+**Per-note scroll memory** (`:624-656`): a module-level
+`const scrollMemory = new Map<string, number>()` plus `lastEditorScrollTop` /
+`lastEditorStateKey`. Keyed by the `stateKey` prop (= the open note id). This
+is why closing and reopening a note returns you to where you were — including
+across the `__draft__` → real-id transition. The restore is applied
+**synchronously** first, *then* the settle-pin takes over (`:643-645`); doing
+it async-only left a window where a fast mode toggle clobbered the restore —
+the "switch back jumps to top" bug.
+
+### 4.6 Custom undo/redo history
+
+Native textarea undo **does not work here**, for two reasons stated at
+`:679-684`:
+1. The native stack never sees programmatic changes (toolbar buttons, task
+   ticks, image inserts).
+2. React's controlled `value` breaks it.
+
+So there is a hand-rolled snapshot stack (`histRef`, `:685-717`):
+
+```ts
+interface HistoryEntry { text: string; selStart: number; selEnd: number }
+```
+
+| Property | Value | Source |
+|---|---|---|
+| max entries | **300** (oldest shifted out) | `:712` |
+| typing coalesce window | **650 ms** | `:707` |
+| granularity | typing → coalesced into chunks; every button action → its own step | `:707-714` |
+| selection restore | yes, both `selStart` and `selEnd`, in an rAF after focus | `:773-780` |
+| redo-stack truncation | on a new commit, everything after `index` is sliced off | `:710` |
+
+`commitHistory(text, "type" | "action")` decides: if the last commit was also
+`"type"` **and** within 650 ms, it *overwrites* the current entry
+(`h.entries[h.index] = entry`) instead of pushing — that's the coalescing.
+
+A subtle guard at `:722`: the value-sync effect ignores an echo of its own
+throttled push (`normalized === lastPushedRef.current`), so the local draft is
+never reset by the store round-tripping a value back. When the value genuinely
+changes externally (note switch), it calls `resetHistory()` — a fresh baseline.
+
+`doUndo`/`doRedo` reset `h.lastKind = ""` on each move so that undoing doesn't
+immediately get re-coalesced into the next typed character.
+
+### 4.7 Find-in-note
+
+UI lives in `NoteEditorView.tsx:740-800`; the engine is
+`emitSearch` (`:737-767`).
+
+- Query is `trim()`ed, `normalize("NFKC")`-ed, `toLocaleLowerCase()`-ed.
+  The document is normalised the same way, so it matches across Unicode
+  compatibility forms.
+- All match offsets are collected with a non-overlapping scan
+  (`indexOf(q, at + max(1, q.length))`).
+- Index wrapping is safe for negatives:
+  `((preferred % len) + len) % len`.
+- Reported up as `{ count, active }` → the header shows `"3/12"`.
+- Query push is **debounced 180 ms** (`NoteEditorView.tsx:386-391`).
+- **In edit mode** it calls `el.setSelectionRange(match, match)` — a *collapsed*
+  caret, deliberately **not** a selection. The comment at `:756-757` explains:
+  focusing or selecting would steal focus from the search field so the next
+  typed character would replace text. Then it smooth-scrolls the line to 35%
+  of the container.
+- **In preview mode** the query is injected as `<mark class="search-hit">` into
+  the rendered HTML (`:1122-1128`) with proper HTML-escaping, and an effect
+  (`:1129-1140`) toggles `.search-hit-active` on the current one and scrolls to it.
+
+### 4.8 Math / KaTeX + the math preprocessor
+
+Gated by the **`mathEnabled` setting** (default **on**). Two hooks:
+
+```tsx
+const katexPlugins = appSettings.mathEnabled
+  ? [[rehypeKatex, { throwOnError: false, strict: false, errorColor: "#ef4444" }]] : [];
+
+const mathReadyContent = appSettings.mathEnabled
+  ? preprocessMathMarkdown(previewContent) : previewContent;
+```
+
+KaTeX is configured **non-strict and non-throwing**, so malformed LaTeX renders
+a red error string instead of blowing up the whole note. Rendering is 100%
+offline — fonts are bundled (visible as `KaTeX_*.woff2` in the build output).
+
+#### `lib/math-pre.ts` — the V7 preprocessor (213 lines)
+
+`remark-math` only understands `$…$` / `$$…$$`, but people write math four
+different ways. The preprocessor normalises all of them **before** the pipeline:
+
+| Input | Output | Kind |
+|---|---|---|
+| `\[ x = \frac{-b \pm \sqrt{b^2-4ac}}{2a} \]` | `$$ … $$` | display |
+| `\( \sin^2\theta + \cos^2\theta = 1 \)` | `$ … $` | inline |
+| `x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}` *(bare line)* | `$$ … $$` | display |
+| `E = mc^2` *(bare line)* | `$$ … $$` | display |
+| `a^2 - b^2 = (a-b)(a+b)` *(bare line)* | `$$ … $$` | display |
+| Multi-line `\[` … `\]` opener/closer lines | `$$` in place | display |
+
+**Three hard guarantees** (documented at `math-pre.ts:20-26`, and the reason
+the module exists at all):
+
+1. **Line count is preserved exactly.** Transformations happen in place on the
+   same line they were found on. This is *required* — the scroll-anchoring
+   system indexes by line number, so a changed line count would break it.
+2. **Never touched:** fenced code blocks (``` / ~~~), YAML front-matter, inline
+   code spans, headings, list items, quotes, tables, raw HTML.
+3. **Prose is never mathified.** A bare line is only wrapped if it looks like
+   math.
+
+The prose guard is deliberately conservative (`isBareMathLine`, `:53-107`):
+
+- length > 160 chars → not math
+- starts with markdown/HTML structure (`#`, `>`, `-`, `1.`, `|`, `![`, `<`,
+  ` ``` `, `~~~`, `$$`) → not math
+- is a URL → not math
+- already contains `$` → left for remark-math
+- contains quotes / backticks / `. ` + 3-letter word / `!` / `?` → not math
+- **contains any 3+ letter word that is not a known math function → not math.**
+  LaTeX commands are stripped first (they're math, not prose words), and the
+  remaining words are checked against a 60-entry `MATH_WORDS` allow-list
+  (`sin`, `cos`, `log`, `alpha`, `beta`, `pi`, `theta`, … `:31-44`).
+- must then show a relation (`= < > ± ≤ ≥ ≠ ≈`, or `\to`), a superscript/
+  subscript (`^`/`_`), or a LaTeX command.
+
+State tracking: `inFence`, `fenceMarker`, `inFrontmatter`, `inMathBlock` are
+tracked line-by-line so a bare `A =` inside a `\[ bmatrix \]` block is never
+re-wrapped (`:180-190`).
+
+One implementation note worth flagging (`:169-170`): the `$$` replacements use
+the **function form** of `.replace()`. In a plain string replacement `"$$"` is
+the escape for a literal `$` and would silently collapse to `"$"` — the comment
+records this trap.
+
+### 4.9 Task lists (checkboxes)
+
+Two representations, one truth:
+
+- **On disk / in the textarea:** plain markdown task lines — `- [ ] item`,
+  `- [x] item`. Portable to any markdown tool.
+- **In the preview:** GFM checkboxes, interactive.
+
+`TASK_RE = /^(\s*)([-*])\s+\[([ xX])\]\s?(.*)$/` (`core/markdown.ts:24`).
+
+| Function | Purpose |
+|---|---|
+| `parseTaskItems(body)` | → `ChecklistItemDTO[]` with synthetic ids `t0, t1, …` |
+| `taskStats(body)` | `{ total, done }` — drives the card progress badge |
+| `toggleTaskLine(body, index, checked)` | flip the *n*-th task, immutable |
+| `setTaskText(body, index, text)` | set task text, keep state |
+| `tasksToBody(items)` | build a body from item drafts |
+| `textToListBody(body)` | plain text → checklist |
+| `listToTextBody(body)` | checklist → plain text |
+| `bodyHasRealContent(body)` | task markers alone don't count as content |
+
+The preview checkbox maps back by **DOM index** among all checkboxes in the
+preview (`MarkdownEditor.tsx:1381-1384`) — this is correct only because both
+`react-markdown` and `parseTaskItems` walk tasks in document order.
+
+**Checklist mode toggle:** the footer button (`NoteEditorView.tsx:978-994`)
+flips `note.type` between `text` and `list` and converts the body in the same
+step via `textToListBody` / `listToTextBody`.
+
+**The empty-checklist bug (V8):** an empty `list` note used to seed the editor
+with the literal string `"- [ ] "`, which parsed as a plain bullet containing
+the *text* `"[ ]"` — so no checkbox ever appeared. Now the editor seeds a real
+task-list HTML item instead (`MarkdownEditor.tsx:298`, `:379`,
+`NoteEditorView.tsx:649-655`):
+```html
+<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p></p></li></ul>
+```
+with every `value` comparison normalising that literal to `"- [ ] "`.
+
+### 4.10 Per-image sizing inside markdown
+
+**V10 change — sizing is scoped to the selected object** (`:1148-1154`):
+- A normal markdown image stores `size=NN` in **its own title**.
+- An HTML `img-grid` stores `data-size=NN` on **that grid only**.
+
+**Invocation:** the old always-visible overlay button was removed. Now:
+- **long press** — 520 ms, `:1246-1254`
+- **right click / context menu** — `:1261-1264`
+- mouse is filtered to left button only (`:1247`)
+
+`suppressClickRef` swallows the click that a long press synthesises, so opening
+the size menu never also opens the lightbox (`:1265-1269`).
+
+**The menu** (`renderImageSizeMenu`, `:1271-1293`):
+
+| Preset | Value |
+|---|---|
+| S | 35% |
+| M | 55% |
+| L | 75% |
+| Full | 100% |
+| Auto | *(no size attribute)* |
+
+Plus a range slider `min=20 max=100 step=5` (displays `60` when Auto). The menu
+is **fixed-position** and clamped to the viewport (`openSizingAt`, `:1232-1245`:
+`menuWidth=198`, `menuHeight=132`, 10 px gutter) — so changing an image's width
+never re-lays-out the menu under the user's finger, and it never opens
+half-off-screen on a phone.
+
+**Writing the size** — `setImageSize` (`:1175-1230`):
+- Grid: regex over `<div … class="img-grid" …>`, matched **by source line** to
+  pick exactly the right grid, then a `data-size` attribute is added/stripped.
+- Image: regex over `!\[…\]( url "title")`, matched by source line **and** by
+  comparing the URL against the display URL, the raw file, and the encoded
+  path. The comment at `:1189-1192` explains why: the persisted draft may hold
+  an `attachment/` path while the preview holds a resolved `blob:` URL, so a
+  blob-URL lookup alone would be unreliable.
+- After writing, it **cancels the settle-pin**, preserves `scrollTop`, and
+  restores it over **two `requestAnimationFrame`s** — because the rendered
+  image height changes and the browser would otherwise clamp to 0 mid-reflow.
+
+Validation: `parseImageSize` and `parseGridSize` only accept **10–100**.
+
+**CSS application:**
+- `[data-size]` lifts the auto caps so the explicit inline width wins
+  (`globals.css:607-610`).
+- Grid tiles are exempted from the single-image caps:
+  `.md-preview .img-grid img.md-inline-image { max-width:100%; max-height:none; margin:0 }`
+  (`globals.css:740-744`).
+
+### 4.11 Attachment URL ↔ path round-trip
+
+The file on disk must **never** contain a `blob:` URL. Two directions:
+
+**`toDisplay(md)` — display time (`:658-664`)**
+
+Regex matches both `![alt](attachment/…)` **and** `[label](attachment/…)` —
+the second form is legacy but is supported. Percent-decodes the path, looks up
+a display URL, and rewrites to `![…](blob:…)`. If no URL resolves it leaves the
+text untouched (so the raw path stays visible/debuggable).
+
+**`fromDisplay(md)` — save time (`:666-677`)**
+
+Two passes:
+1. `](blob:…)` and `](data:…)` → `](attachment/<encoded>)`
+2. **V5:** `<img src="blob:…">` / `<img src="data:…">` → encoded path, so the
+   `<div class="img-grid">` HTML round-trips too
+
+Both use `urlToFileRef.current` — a **ref**, not state, so the map is always
+current inside a callback without re-creating it.
+
+`fromDisplay` is called inside `updateDraft` (`:906`) and inside every
+programmatic mutation, so **it is impossible for a blob URL to reach disk via
+the editor**.
+
+Encoding helpers live in `core/markdown.ts:375-392`. `encodeAttachmentPath`
+splits on `/`, percent-encodes each segment, and additionally escapes
+`!'()*` (which `encodeURIComponent` leaves alone) — necessary because
+parentheses inside a markdown link target would terminate the link early.
+
+`registerUrl(url, file)` on the imperative handle (`:804`) registers a
+newly-uploaded attachment's display URL immediately, before the parent's
+`urlMap` state round-trips.
+
+### 4.12 Typing performance & throttling
+
+**The problem** (`:397-402`): every keystroke flowed straight into the zustand
+store, which re-rendered the whole app behind the editor — the app froze on
+large pastes.
+
+**The fix:** two speeds.
+- The **textarea is uncontrolled-feeling** — `draft` local state updates instantly.
+- **Store pushes are throttled** leading + trailing **140 ms**
+  (`pushThrottled`, `:413-429`): if ≥140 ms since the last push, push
+  immediately; otherwise schedule a trailing call for the remainder.
+- **Programmatic edits push immediately** (`pushNow`, `:408-412`) — toolbar
+  actions must feel instant and must not lose text.
+- `flushPendingPush()` (`:430-437`) forces the pending trailing call. It is
+  called on editor close, on `visibilitychange → hidden`, on `beforeunload`,
+  and on Android `onDestroy` — so nothing is ever lost to a throttled buffer.
+
+`NoteEditorView` additionally keeps its editor callbacks **stable across
+keystrokes** via `noteRef` (`:304-305`, `:325-326`, `:348-350`), which keeps
+`React.memo(MarkdownEditor)` effective. The `beforeContent` block (attachments
+strip + title input) is separately memoised (`:562-638`) so typing in the body
+doesn't rebuild the thumbnail grid every keypress.
+
+### 4.13 Keyboard handling
+
+`handleEditorKeyDown` (`:969-1008`):
+
+| Key | Behaviour |
+|---|---|
+| `Ctrl/Cmd + Z` | undo (own history) |
+| `Ctrl/Cmd + Shift + Z` | redo |
+| `Ctrl/Cmd + Y` | redo |
+| `Enter` on a list item | continue the list |
+| `Enter` on an **empty** list item | **exit the list** |
+| `Shift/Alt/Ctrl/Cmd + Enter` | plain newline (not intercepted) |
+| `Enter` with a selection | plain newline (not intercepted) |
+
+The continuation logic (`:991-1007`):
+- bullet `- `/`* ` → repeat the same marker, preserving indentation
+- numbered `1. ` → **increment the number**
+- task `- [ ] ` → continues as `- [ ] ` (checkbox stays unchecked)
+- empty item → insert nothing and exit the list
+
+Both native history shortcuts are `preventDefault()`ed and routed to the
+custom stack, because the native one is broken in a controlled textarea.
+
+**Paste** (`:1451-1457`): if the clipboard contains files and **all** of them
+are `image/*`, the paste is intercepted, `preventDefault()`ed, and routed to
+`onPasteImages` → attachments. Mixed text+image pastes fall through to normal
+text paste.
+
+**Escape** closes the editor (`NoteEditorView.tsx:496-506`) — but only if no
+Radix popper is open, so Escape closes a popover before the editor.
+
+### 4.14 Every setting that affects markdown
+
+| Setting | Store key | Default | Range | Effect on the editor |
+|---|---|---|---|---|
+| **Math formulas** | `mathEnabled` | `true` | on/off | Toggles `remarkMath` + `rehypeKatex` plugins **and** `preprocessMathMarkdown`. Off ⇒ `$…$` renders as literal text. `:383-387, 1118-1121, 1311-1316` |
+| **Note text size (markdown)** | `markdownScale` | `100` | 70–170 %, step 5 | Sets CSS var `--md-scale`; `.md-preview` and `.md-editor .md-prose` use `font-size: calc(0.925rem * var(--md-scale))`. All heading sizes are `em`-based so they scale proportionally. `globals.css:554-576` |
+| **Note font** | `noteFont` | `default` | 14 ids | Sets `--note-font`, used by `.md-textarea` and `.md-preview` |
+| **Image grid width** | `mediaGridWidth` | `75` | 40–100 %, step 5 | Sets `--note-media-grid-max` on the editor root; caps `.md-preview .img-grid { max-width: min(100%, var(--note-media-grid-max)) }`. `NoteEditorView.tsx:678-683`, `globals.css:715-722` |
+| **App text size** | `uiScale` | `100` | 70–150 %, step 5 | Global root font-size — affects the *toolbar chrome*, not the note body |
+| **Note spacing (density)** | `density` | `cozy` | compact/cozy/spacious | Card & grid spacing — affects the note list, not the editor body |
+| **Animations** | `animations` | `true` | on/off | Adds `.animations-off` which kills transitions/animations globally |
+| **Theme** | `themeId` | `system` | 38 options | All preview colours come from CSS vars; light/dark flips code-block, table-stripe, and image border colours |
+
+### 4.15 Markdown support matrix
+
+| Feature | Supported | Mechanism |
+|---|---|---|
+| Headings H1–H6 | ✅ | `remark-gfm`; toolbar offers H1–H3 |
+| **Bold** `**` `__` | ✅ | |
+| **Italic** `*` `_` | ✅ | snake_case-safe on clear |
+| **Underline** `<u>` | ✅ | via `rehype-raw` |
+| **Strikethrough** `~~` | ✅ | `remark-gfm` |
+| **Inline code** `` ` `` | ✅ | with per-block Copy button |
+| **Code blocks** ` ``` ` | ✅ | `.md-code-wrap` + Copy, horizontally scrollable |
+| Bullet lists | ✅ | |
+| Numbered lists | ✅ | auto-increments |
+| **Task lists / checkboxes** | ✅ | **interactive in preview** |
+| **Tables** | ✅ | GFM, wrapped in a horizontal scroller |
+| Blockquotes | ✅ | |
+| Horizontal rules | ✅ | |
+| Links | ✅ | label + URL, URL normalisation |
+| **Images** | ✅ | see §5 |
+| **Math** | ✅ | KaTeX, 6 input forms (§4.8) |
+| **Raw HTML** | ✅ | `rehype-raw` — required for `<u>` and `img-grid` |
+| Footnotes | ⚠️ partial | `remark-gfm` supports the syntax; no `remark-footnotes` in the deps |
+| Definition lists | ❌ | no plugin |
+| Mermaid / diagrams | ❌ | no plugin |
+| Syntax highlighting | ❌ | no highlighter; code blocks are plain (pre-styled) |
+| Emoji shortcodes `:smile:` | ❌ | no `remark-emoji`; literal text |
+
+**Security note:** `rehype-raw` means raw HTML in a note is rendered. This is
+acceptable *because* the notes are the user's own local files, but it does mean
+a note imported from an untrusted source could contain HTML. `previewUrlTransform`
+still blocks `javascript:`/`vbscript:` URLs, which is the main XSS vector.
+
+---
+
+## 5. The image system — full deep dive
+
+This covers the four files that together implement images:
+`media.ts` (ingest), `NoteEditorView.tsx` (orchestration), `ImageInsertPopover.tsx`
+(cursor insertion), `MarkdownEditor.tsx` (rendering + sizing), plus
+`Lightbox.tsx`, `ImageEditorDialog.tsx` and `attachment-url.ts`.
+
+### 5.1 The one rule that governs everything: **V8.5**
+
+> **An upload NEVER auto-inserts into the note body.** Images always land in
+> the attachments area. Placing them in the body is a separate, explicit,
+> second action.
+
+This is stated as a hard architectural rule in `NoteEditorView.tsx:294-303`:
+
+> V8.5 (user regression report on V8): EVERY upload path — footer picker,
+> editor toolbar button, composer shortcut, image paste — stores images into
+> the attachments area ONLY. Auto-insertion into the note body is now
+> structurally impossible: the old "insert" pick-mode (and the `pickModeRef`
+> that could stay poisoned after a cancelled picker) is gone. An image lands
+> in the body exclusively via a thumbnail's explicit "Insert into note"
+> button — or the V5 "insert at cursor" picker, which registers the upload
+> first and then inserts explicitly.
+
+The root cause it fixes: `pickModeRef` was a ref that could remain in the
+"insert" state after a *cancelled* picker, so the next unrelated upload would
+silently duplicate a phantom image into the note body. The mode flag is gone
+entirely.
+
+### 5.2 The two distinct image surfaces
+
+The user-facing mental model has **two places images live**, and it is worth
+being precise because they behave differently:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  A. ATTACHMENTS  — a grid at the TOP of the editor, above   │
+│     the title. Always square-cropped thumbnails. This is    │
+│     the "library" of every image saved to this note.        │
+│                                                             │
+│  B. THE NOTE BODY — where images are actually *used*.        │
+│     Single images or automatic grids, placed at the caret.  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+An image can be in the library without appearing in the body — that's the whole
+point of the V8.5 change.
+
+### 5.3 Surface A — the attachments grid at the top
+
+**Location:** `NoteEditorView.tsx:564-638`, the `beforeContent` prop, rendered
+by `MarkdownEditor` *above* the scroll content, above the title input and above
+the editor body (`:1307`).
+
+**Only rendered when `note.attachments.length > 0`** (`:567`) — no empty grid
+clutter for text-only notes.
+
+**Layout** (`:568-578`):
+
+```tsx
+<div className="relative mb-2 max-h-32 overflow-x-hidden overflow-y-auto rounded-lg
+                border border-black/10 p-2 … dark:border-white/10">
+  <button className="absolute right-2 top-2 z-10 … bg-black/65 …">
+    <Images />                                        {/* view-all button */}
+  </button>
+  <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(5rem,1fr))]
+               gap-2.5 overflow-hidden pr-10">
+    {note.attachments.map(m => <EditorThumb … />)}
+  </div>
+</div>
+```
+
+| Property | Value | Meaning |
+|---|---|---|
+| container max height | `max-h-32` (**8 rem = 128 px**) | the strip is **capped**, never grows with the note |
+| scroll | `overflow-y-auto`, `overflow-x-hidden` | scrolls **vertically** once it hits the cap |
+| columns | `repeat(auto-fill, minmax(5rem, 1fr))` | **fully responsive** — 80 px min tile, as many columns as fit, the last row stretches |
+| gap | `2.5` (10 px) | |
+| right padding | `pr-10` | reserves space for the view-all button |
+| thumbnail size | `h-20 w-20` (80 px), `rounded-md` | square |
+| image fit | `object-cover` | square crop |
+| z-order | `z-10` on the view-all button | floats above the grid |
+
+The strip is deliberately **capped and internally scrollable** rather than
+growing — so a note with 200 images still opens instantly and the editor body
+starts at a predictable offset. Horizontal scroll is explicitly *hidden*, so
+the grid reflows into fewer columns instead.
+
+**Each thumbnail — `EditorThumb` (`:78-144`)** is a 80×80 tile with **four**
+overlaid controls:
+
+| Control | Position | Action |
+|---|---|---|
+| the image itself | fills tile | `openAttachmentPreview` → Lightbox |
+| ✏️ PenLine | top-left | `onEdit` → ImageEditorDialog (crop/draw/text) |
+| ✕ X | top-right | `onRemove` → `removeNoteAttachment` + "Attachment deleted" toast |
+| ⊕ ImagePlus | bottom-left | `onInsert` → **insert into note body** |
+| GIF badge | bottom-right | shown when `att.kind === "gif"` |
+
+Buttons stop propagation so they don't also trigger the tile's lightbox.
+While the URL is resolving, the tile shows an `animate-pulse` skeleton
+(`:97-101`) — attachments loaded by a disk scan carry `url === ""` and are
+resolved lazily (see §5.8).
+
+### 5.4 Adding images (the "add below" path)
+
+There are **five** entry points, and under V8.5 **all five go to the
+attachments grid only**:
+
+| # | Entry point | Code | Destination |
+|---|---|---|---|
+| 1 | **Editor toolbar** "Add image (saved to attachments)" | `MarkdownEditor.tsx:197` → `onPickImages` → `NoteEditorView.tsx:358-364` → `fileInputRef.current?.click()` | attachments |
+| 2 | **Bottom footer** ImagePlus → `MediaPickPopover` | `NoteEditorView.tsx:958-977` | attachments |
+| 3 | **Paste** an image into the editor | `MarkdownEditor.tsx:1451-1457` → `onPasteImages` → `attachPickedFiles` | attachments |
+| 4 | **Composer** image button | `Composer.tsx:57-64` → `notes:editor-pick-media` event → same hidden input | attachments |
+| 5 | **"Add by URL"** (footer popover, 2nd tab) | `MediaPickPopover.tsx` → `fetchMediaFromUrl` | attachments |
+
+`attachPickedFiles` (`:307-327`) is the shared handler:
+```
+capture scrollTop → prepareMedia(files) → addNoteMedia(noteId, media)
+  → for each: resolve display URL → registerUrl(url, file)
+  → toast "Image added" / "N files added"
+```
+
+`uploadForInsert` (`:331-346`) is the parallel path used by the *cursor*
+picker: same ingest, but it **returns** the resolved `{url, alt}` items so the
+caller can insert immediately. It still registers the attachment first — the
+V8.5 invariant is upheld.
+
+The hidden `<input>` is `accept="image/*,.gif"` + `multiple` (`:1125-1137`),
+and `e.target.value = ""` is reset after every pick so re-picking the same file
+fires `change` again.
+
+### 5.5 Compression on ingest — `media.ts`
+
+`compressImage(file, name)`:
+
+| Rule | Behaviour |
+|---|---|
+| GIF | **passed through untouched** to preserve animation. Hard-capped at **8 MB** (`MAX_GIF_BYTES`) — throws `"…" is too large — GIFs must be under 8MB` |
+| Other formats | decoded with `createImageBitmap` |
+| ≤ 1600 px on both sides | returned **unchanged** (no re-encode, no quality loss) |
+| > 1600 px | scaled to fit 1600×1600 preserving aspect ratio, re-encoded |
+| PNG | re-encoded as **PNG** (`image/png`) — keeps transparency |
+| everything else | re-encoded as **JPEG** at quality **0.82** |
+| any error | returns the original file |
+
+`prepareMedia(files)` maps `compressImage` over the list in parallel.
+`fetchMediaFromUrl(url)` fetches with `mode: "cors"`, rejects non-`image/*`
+responses, derives a filename from the URL's last segment, and appends an
+extension if there isn't one.
+
+### 5.6 Surface B — placing images into the note body
+
+**Two routes.** Only these two.
+
+#### Route 1 — the per-thumbnail "Insert into note" button
+
+`insertAttachmentIntoEditor` (`:286-292`): capture scroll → `registerUrl` →
+`editorHandle.insertImage(url, att.name)`.
+
+`insertImage` (`MarkdownEditor.tsx:815-837`) inserts a **single** image at the
+caret:
+```
+![alt](url)
+```
+with a blank line before/after. In preview mode the textarea isn't mounted, so
+it falls back to **appending to the end of the document** — a V4 fix, because
+the button previously did nothing at all in preview.
+
+#### Route 2 — the "Insert image at cursor" picker (gallery icon)
+
+`ImageInsertPopover` (`ImageInsertPopover.tsx`), opened by the toolbar's
+`Images` icon (`MarkdownEditor.tsx:198`). Mounted in a visually-hidden but
+mounted wrapper so the popover still portals correctly
+(`NoteEditorView.tsx:832-845`).
+
+Two sources:
+1. **"Choose new images"** — a dashed drop-zone button, `multiple`. Ingests via
+   `prepareMedia` → `onUploadFiles` (= `uploadForInsert`, registers the
+   attachments) → `onConfirm` immediately.
+2. **"From this note"** — a 4-column selectable grid of existing attachments
+   (`grid-cols-4`, `max-h-44` scrollable, `aspect-square`, check badge on
+   selection). Confirm button reads `Insert N`.
+
+Both funnel into `onConfirm(items)` → `editorHandle.insertImages(items)`.
+
+### 5.7 `insertImages` — single vs. grid. **The exact rule.**
+
+`MarkdownEditor.tsx:838-876`. This is the heart of the question:
+
+```ts
+if (items.length === 1) {
+  snippet = `![${items[0].alt || items[0].url}](${items[0].url})`;
+} else {
+  const cols = items.length <= 4 ? 2 : 3;          // ← the grid column rule
+  const imgs = items
+    .map(it => `<img src="${it.url}" alt="${(it.alt || "image").replace(/"/g, "&quot;")}">`)
+    .join("\n");
+  snippet = `<div class="img-grid" data-cols="${cols}">\n${imgs}\n</div>`;
+}
+```
+
+| # images | Result | Markdown emitted |
+|---|---|---|
+| **1** | **plain markdown image** — no wrapper, no HTML | `![alt](blob:…)` |
+| **2, 3, 4** | **2-column grid** (`data-cols="2"`) | `<div class="img-grid" data-cols="2">…2 imgs…</div>` |
+| **5 or more** | **3-column grid** (`data-cols="3"`) | `<div class="img-grid" data-cols="3">…N imgs…</div>` |
+
+**Why a grid and not just stacked images?** Stacked full-width images in a note
+push the text far down and look bad. A 2-up / 3-up square grid is the compact,
+Keep-like arrangement. The threshold is 4: up to four images read comfortably
+as a 2×2 block; a 2-column grid of 8 images would be an absurdly tall column,
+so 5+ switches to 3.
+
+**Padding logic** (`:865-866`) — inserted at the caret with proper blank lines
+on both sides, without introducing extra whitespace if the caret is already at
+a line boundary:
+```ts
+const padBefore = before && !before.endsWith("\n") ? "\n\n" : before ? "\n" : "";
+const padAfter  = after  && !after.startsWith("\n") ? "\n\n" : after  ? "\n" : "";
+```
+
+**Caret placement** (`:870-875`): the caret lands immediately **after** the
+inserted snippet, and the scroll position is captured and restored so the
+insert doesn't cause a jump.
+
+**`alt` escaping**: `"` is escaped to `&quot;` in the HTML attribute.
+
+**`fromDisplay` runs on the result** (`:868`) — so the `<img src="blob:…">`
+tags are converted back to `attachment/…` paths before the draft is committed.
+**The grid HTML never persists a blob URL.**
+
+### 5.8 Display URL resolution — `attachment-url.ts`
+
+Attachments are stored on disk. To render they need a browser-usable URL.
+
+- **On disk scan**, every `AttachmentDTO` is created with `url: ""` — the repo
+  deliberately does not load bytes during a scan.
+- `resolveAttachmentUrls(dir, attachments)` loads all of a note's attachments
+  in parallel and returns `Map<file, url>`.
+- `useAttachmentUrl(dir, att)` is the per-thumbnail hook: if `att.url` is
+  already set it returns it; otherwise it calls
+  `repo.ensureAttachmentUrl(dir, att.file)` once and caches.
+- `NoteRepository` holds a `urlCache: Map<string, string>` so a URL is created
+  at most once per session.
+- URLs are `URL.createObjectURL(blob)` — **session-only, never persisted**.
+
+`NoteEditorView` builds two maps for the editor (`:200-221`):
+- `fileToUrl(file) → url` — used by `toDisplay` to resolve `attachment/…`
+- `urlToFile(url) → file` — the inverse, used by `fromDisplay` to persist
+
+The `attachmentKey` dependency (`:196-210`) re-resolves when the set of
+attachments or their URLs changes, and the `alive` guard prevents a stale
+promise from setting state after unmount.
+
+### 5.9 Grid CSS — the actual layout rules
+
+`src/app/globals.css:708-758`:
+
+```css
+.md-preview .img-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));   /* default 2 */
+  gap: 8px;
+  width: 100%;
+  max-width: min(100%, var(--note-media-grid-max, 100%));   /* ← the setting */
+  margin: 0.6rem 0;
+}
+.md-preview .img-grid[data-cols="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.md-preview .img-grid img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;          /* ← every tile is square */
+  object-fit: cover;             /* ← square crop, never distorted */
+  border-radius: 10px;
+  border: 1px solid rgb(0 0 0 / 0.06);
+  cursor: pointer;
+  display: block;
+  background: rgb(0 0 0 / 0.04);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.md-preview .img-grid img:hover { transform: scale(1.015); }
+.dark .md-preview .img-grid img { border-color: rgb(255 255 255 / 0.08); }
+@media (max-width: 480px) {
+  .md-preview .img-grid { gap: 6px; }
+  .md-preview .img-grid img { border-radius: 8px; }
+}
+```
+
+Key points:
+- `minmax(0, 1fr)` (not `1fr`) — prevents grid blowout from a wide intrinsic
+  image.
+- `aspect-ratio: 1/1` + `object-fit: cover` — **every tile is a square crop**
+  regardless of the source aspect ratio. A portrait and a landscape in the same
+  grid render identically sized.
+- `--note-media-grid-max` comes from the `mediaGridWidth` setting
+  (default **75%**), injected on the editor root by
+  `NoteEditorView.tsx:678-683`. So the grid fills 75% of the note width by
+  default and the remaining 25% is a right gutter.
+- Grid images are **exempted from the single-image caps** (`globals.css:740-744`)
+  — otherwise `max-height: 60vh` would distort 3-column tiles.
+- A grid can also carry `data-size` (set via long-press, §4.10), which sets
+  `width: {size}%` inline and overrides `--note-media-grid-max` for that grid.
+
+### 5.10 Lightbox
+
+`Lightbox.tsx` + `LightboxHost` (`NoteEditorView.tsx:1145-1150`) — mounted once
+at the app root so it works from cards *and* the editor.
+
+Toolbar (`LightboxToolbar`):
+
+| Button | Action |
+|---|---|
+| **Edit image** | opens `ImageEditorDialog` for the owning note |
+| **Download** | `fetch(url)` → blob → `saveBlob(name, blob)` |
+| **Remove from note** *(when opened from a body image)* | strips markdown references, keeps the file |
+| **Delete image** *(when opened from a body image)* | strips references **and** deletes the file |
+| GIF badge | shown when `att.kind === "gif"` |
+
+`stripReferences` (`:76-92`) is the cleanup routine. It builds a candidate set
+of **every** string that could reference the image — the display URL, the raw
+`file`, and the `encodeAttachmentPath` variant — then removes:
+- `![alt](cand)` markdown images
+- `[text](cand)` links → keeps the text
+- `<img src="cand">` tags
+
+then **collapses now-empty grid wrappers** (two patterns, to handle a
+`<br>`-only leftover) and squashes `\n{3,}` → `\n\n`. This is the counterpart
+to the V5 grid insertion — it's why removing one image from a 4-image grid
+doesn't leave an empty bordered box.
+
+### 5.11 Image editor
+
+`ImageEditorDialog.tsx` (780 lines) — three tools plus undo:
+
+| Tool | Behaviour |
+|---|---|
+| **Crop** | draggable rect, aspect presets, apply |
+| **Draw** | freehand pointer strokes, colour + stroke-width |
+| **Text** | place text at a tap point, size as % of image width |
+| **Undo** | `Ctrl/Cmd + Z`, snapshot stack, `UNDO_LIMIT` cap |
+| **Reset** | restores the original |
+| **Save** | `canvas.toBlob` → `saveEditedImage(noteId, att, blob)` → replaces the file **in place** (same filename), so every markdown reference stays valid |
+
+**Because the save is in-place, editing an image never breaks the markdown.**
+There is no "attachment not found" after an edit.
+
+### 5.12 Complete image flow — end to end
+
+```
+USER: taps toolbar "Add image"  (or pastes, or footer, or URL)
+   │
+   ├─ prepareMedia()  →  compress (1600px cap, GIF passthrough ≤8MB)
+   │
+   ├─ addNoteMedia(noteId, media)
+   │     └─ repo:  attachment/ dir created on demand
+   │              unique filename (uniqueName → "name (2).png")
+   │              writeBinary
+   │              createObjectURL → AttachmentDTO.url
+   │
+   └─ registerUrl(blobURL, "attachment/photo.png")
+         └─ map:  blob:…  ⇄  attachment/photo.png
+   │
+   ▼
+ATTACHMENTS GRID (top of editor) gains a 80×80 thumbnail
+   │
+   ├── ✏️  Edit      → ImageEditorDialog → in-place replace
+   ├── ✕   Remove   → delete file + DTO
+   ├── ⊕   Insert   → insertImage()  →  ![alt](blob:…)   (SINGLE)
+   └── ⊕  Insert N  → ImageInsertPopover
+                        → insertImages()
+                             1 image  →  ![alt](blob:…)
+                             2–4      →  <div class="img-grid" data-cols="2">
+                             5+       →  <div class="img-grid" data-cols="3">
+   │
+   ▼
+fromDisplay()  —  blob:/data: URLs → attachment/… paths
+   │
+   ▼
+store (600 ms debounce) → repo.saveNote() → node.md written
+```
+
+**Invariant that holds at every step:** the string in `node.md` only ever
+contains `attachment/<percent-encoded-name>`. Blob URLs exist only in memory.
+
+---
+
+## 6. Settings inventory
+
+### 6.1 Storage mechanism
+
+`src/components/keep/settings-store.ts` (167 lines). **Not** zustand — a
+hand-rolled external store consumed through `useSyncExternalStore`, so it is
+hydration-safe (server renders defaults, real values arrive after mount).
+
+| | |
+|---|---|
+| `localStorage` key | **`notes-app-settings-v1`** |
+| `getSettings()` | current snapshot |
+| `hydrateSettings()` | idempotent, called once from `KeepApp` mount |
+| `updateSettings(patch)` | merges, writes to localStorage, emits |
+| `resetSettings()` | restores defaults, removes the key |
+| `getSettingsSnapshot()` | plain copy for export |
+| write failure | swallowed — "quota exceeded (large wallpaper) — keep in-memory only" |
+
+**V6 migrations run on every load** (`settings-store.ts:89-97`):
+- `appName === "Notes"` → reset to `"Notenoid"` (only the untouched default)
+- legacy `fontSize: "sm" | "lg"` → `uiScale` 90 / 110
+- legacy `mediaSingleWidth` is **dropped** (single images are per-image now)
+- clamps: `uiScale` 70–150, `markdownScale` 70–170, `mediaGridWidth` 40–100
+
+### 6.2 The full `AppSettings` interface
+
+| Key | Type | Default | Range | Description |
+|---|---|---|---|---|
+| `appName` | `string` | `"Notenoid"` | ≤ 24 chars | custom brand name; sets `document.title` |
+| `wallpaper` | `string \| null` | `null` | — | JPEG **data URL**, ≤ 1600 px, q 0.82 |
+| `wallpaperBlur` | `number` | `8` | 0–40 px, step 1 | CSS `blur()` on the wallpaper |
+| `wallpaperDim` | `number` | `35` | 0–80 %, step 5 | black overlay opacity |
+| `wallpaperFixed` | `boolean` | `true` | — | `fixed` vs `absolute` positioning |
+| `density` | `"compact"\|"cozy"\|"spacious"` | `"cozy"` | — | note spacing |
+| `uiScale` | `number` | `100` | 70–150 %, step 5 | **app-wide** text scale |
+| `markdownScale` | `number` | `100` | 70–170 %, step 5 | **note-only** text scale |
+| `appFont` | `string` | `"default"` | 14 ids | UI font |
+| `noteFont` | `string` | `"default"` | 14 ids | editor + preview + cards font |
+| `themeId` | `string` | `"system"` | 38 options | theme |
+| `animations` | `boolean` | `true` | — | global motion |
+| `searchIncludeArchive` | `boolean` | `true` | — | search archived notes too |
+| `confirmBeforeDelete` | `boolean` | `false` | — | ask before trashing |
+| `mathEnabled` | `boolean` | `true` | — | **KaTeX in the preview** |
+| `mediaGridWidth` | `number` | `75` | 40–100 %, step 5 | **image grid width in notes** |
+
+### 6.3 Settings dialog — 5 tabs
+
+`SettingsDialog.tsx:83-90`:
+```ts
+type Tab = "general" | "appearance" | "search" | "vault" | "about";
+```
+
+| Tab | Contents |
+|---|---|
+| **General** | App name · Confirm before deleting · Backup & restore (Export/Import) · Storage info + Change/Rescan · Reset appearance settings |
+| **Appearance** | Theme gallery (38) · Wallpaper + blur/dim/fixed · Note spacing · App text size · Note text size · App font · Note font · Image grid width · Math formulas · Animations |
+| **Search & Notes** | Include Archive in search · "Search covers" info panel |
+| **Vault** | Setup / status · Change password · Security questions · Export vault |
+| **About app** | Name + version badge + 11-item feature list |
+
+### 6.4 How each setting reaches the DOM
+
+| Setting | Mechanism | Where |
+|---|---|---|
+| `themeId` | `applyThemeToDocument()` — removes every `theme-*` class, adds `theme-<id>`, toggles `dark`, sets `color-scheme`, writes ~19 inline CSS vars, updates `--note-default-*` and `<meta name="theme-color">` | `ThemeController.tsx:23-77` |
+| `uiScale` | `documentElement.style.fontSize = (16 × pct/100) + "px"` → every `rem` Tailwind size scales together | `ThemeController.tsx:100-103` |
+| `markdownScale` | `--md-scale: pct/100` on `<html>` | `ThemeController.tsx:106-109` |
+| `appFont` / `noteFont` | `--app-font` / `--note-font` on `<html>` | `ThemeController.tsx:113-114` |
+| `mediaGridWidth` | `--note-media-grid-max: "NN%"` on the app root **and** the editor root | `KeepApp.tsx:271`, `NoteEditorView.tsx:682` |
+| `animations` | `animations-off` class on the root wrapper → CSS zeroes all durations | `KeepApp.tsx:265-268`, `globals.css:533-540` |
+| `density` | `DENSITY_CLASS[density].gridGap` → Muuri `gap` (12/20/28) | `NotesView.tsx:46` |
+| wallpaper trio | `WallpaperLayer` inline styles: `filter: blur()`, `transform: scale(1.06)`, an overlay `div`, `fixed` vs `absolute` | `KeepApp.tsx:74-90` |
+| `searchIncludeArchive` | merged into results when `view === "notes"` | `NotesView.tsx:74-78` |
+| `confirmBeforeDelete` | sets local confirm state on the card instead of trashing | `NoteCard.tsx:167, 227-229` |
+
+### 6.5 Themes — 37 + "system"
+
+`lib/themes.ts` (715 lines) + `lib/themes-special.ts` (100 lines).
+`THEMES` = **34** base themes, then `THEMES.push(...SPECIAL_THEMES)` adds **3**
+(`themes.ts:624-626`) = **37**, plus `"system"` = **38 buttons**.
+
+Every theme defines all 13 tokens:
+`background, foreground, card, popover, primary, primary-foreground, secondary,
+muted, muted-foreground, accent, border, input, ring`
+(+ optional `destructive`, `radius`). `baseLight`/`baseDark` supply the six a
+theme may omit.
+
+| Group | n | Themes |
+|---|---|---|
+| `classic` | 2 | Keep Light, Keep Dark |
+| `light` | 7 | Sky Blue, Fresh Mint, Lavender, Rose Quartz, Warm Peach, Sandy Beige, Cool Slate |
+| `dark` | 6 | Midnight Blue, Espresso, Forest Night, Deep Plum, Charcoal, Twitter Dim |
+| `comfy` | 16 | GitHub Light/Dark · Catppuccin Latte/Mocha · Solarized Light/Dark · One Dark · T3 Chat · T3 Ghost · Nord · Dracula · Gruvbox · Rosé Pine · Tokyo Night · Everforest · Kanagawa |
+| `contrast` | 3 | High Contrast Light, High Contrast Dark, High Contrast Navy |
+| `special` | 3 | Frutiger Aero, Vaporwave, Aurora |
+
+**12 light / 22 dark** by mode.
+
+`defaultNoteColors(theme)` (`themes.ts:684-706`) derives the *uncoloured* note
+card from the theme background — light themes: mix toward black 5 %; dark
+themes: mix toward white 7 %, or 10 % when the luminance is below 0.012
+(near-black themes, so the card doesn't melt into the background). This is
+published as `--note-default-bg/-fg/-border` and drives both the cards and the
+"New note" button.
+
+Note text colour is **fixed per mode** — `#1a1b1e` black on light themes,
+`#f7f8f9` white on dark themes, for every colour, always.
+
+### 6.6 Fonts — 14 ids
+
+`default, inter, roboto, open-sans, nunito, poppins, lora, merriweather,
+playfair, jetbrains-mono, fira-code, ibm-plex-mono, comic-neue, caveat`
+
+Loaded at build time via 13 `next/font/google` families in `layout.tsx:28-40`
+(`subsets: ["latin"]`, `display: "swap"`), each exposing a `--nf-<id>` CSS
+variable. **Fully offline in the APK** — no runtime font fetching.
+
+### 6.7 Note colours — 30
+
+`KEEP_COLORS` (`keep-constants.ts:28-300`). First is always **`default`**
+("Theme default"), then 29 named colours: Cerulean, Brown, Gray, Teal, Green,
+Pink, Purple, Coral, Sand, Orange, Sky, Cyan, Mint, Sage, Forest, Lime, Olive,
+Honey, Apricot, Rust, Cherry, Rose, Magenta, Violet, Indigo, Steel, Sandstone,
+Clay, Charcoal.
+
+Each carries `light`, `dark`, `fgLight`, `fgDark`, `swatch`. Custom colours are
+**permanent** — stored on the note and never rewritten by a theme change.
+
+`FOLDER_TINTS` (`:336-343`) has only **6** tints (default, blue, red, yellow,
+green, purple) with light/dark variants, and 20 preset `FOLDER_EMOJIS` (`:331`).
+
+---
+
+## 7. Storage & filesystem layer
+
+### 7.1 The `FSAdapter` contract
+
+`src/core/fs/adapter.ts:18-50`. **All paths are root-relative POSIX strings.**
+
+```ts
+interface FSAdapter {
+  readonly kind: "web" | "opfs" | "android";
+  rootLabel(): string;
+  hasRoot(): boolean;
+  needsPermission(): Promise<boolean>;
+  pickRoot(): Promise<boolean>;
+  restoreRoot(): Promise<boolean>;
+  exists(path): Promise<boolean>;
+  listDir(path): Promise<DirEntry[]>;
+  readText(path): Promise<string>;
+  readBinary(path): Promise<Uint8Array>;
+  writeText(path, text): Promise<void>;
+  writeBinary(path, data): Uint8Array>;  // writeBinary(path, data): Promise<void>
+  makeDir(path): Promise<void>;
+  remove(path, recursive?): Promise<void>;
+  rename(oldPath, newPath): Promise<void>;
+}
+```
+
+Path helpers: `joinPath`, `splitPath`, `basename`, `dirname`, `assertSafePath`
+(rejects `..` and control chars), `mimeForName`, `bytesToBase64` (32 KB
+chunks), `base64ToBytes`, `createMutex`.
+
+### 7.2 Adapter selection — `fs/index.ts:41-68`
+
+```
+1. window.AndroidBridge present       → AndroidFSAdapter   (store "android")
+2. remembered "web" && FSA supported  → WebFSAdapter
+3. remembered "opfs" && OPFS supported → OpfsFSAdapter
+4. FSA supported                     → WebFSAdapter
+5. OPFS supported                     → OpfsFSAdapter      (store "opfs")
+6. otherwise                          → throw
+```
+
+The remembered kind (localStorage `notes-fs-kind`) exists so **a user who
+picked a real folder is never silently downgraded to in-app storage** on the
+next visit.
+
+### 7.3 The four adapters
+
+| | **WebFSAdapter** | **OpfsFSAdapter** | **AndroidFSAdapter** |
+|---|---|---|---|
+| `kind` | `web` | `opfs` | `android` |
+| Root | `showDirectoryPicker({mode:"readwrite", id:"notes-root"})` | `navigator.storage.getDirectory()` | in-app `FolderPickerDialog`; `pickRoot()` falls back to `/storage/emulated/0/Documents/Notes`, then app-private |
+| Persisted | `FileSystemDirectoryHandle` in **IndexedDB** (`notes-fs-db`) | none needed (origin-scoped) | absolute path in **localStorage** `notes-root-path` |
+| Permission | `queryPermission` → if not granted, `hasRoot()` returns false → "Grant access" screen | none | `MANAGE_EXTERNAL_STORAGE` (API 30+), else `WRITE_EXTERNAL_STORAGE` |
+| Binary encoding | raw bytes | raw bytes | **base64** (`NO_WRAP`) |
+| Atomicity | `createWritable()` swap-file semantics | same | `writeAtomic`: `.tmp` + `renameTo` (**no `fsync`**) |
+| `rename` **directories** | ❌ file-only (`handle.move`, Chromium ≥ 111) → **always copy+delete** | ❌ same | ✅ `File.renameTo` |
+| `listDir` on missing | throws `NotFoundError` | throws | returns `[]` |
+| `DirEntry.size` | **never populated (always 0)** | **never populated** | `File.length()` |
+
+`WebFSAdapter` and `OpfsFSAdapter` are both **thin subclasses of
+`HandleFSAdapter`** (214 lines) — identical walking logic, only root
+acquisition differs.
+
+### 7.4 `NoteRepository` — `core/repo.ts` (623 lines)
+
+| Member | Purpose |
+|---|---|
+| `scan()` | index the root → `{ notes, config, skippedDirs }` |
+| `createNote(input)` | dedupe name, mkdir, write `node.md`, write media |
+| `saveNote(note)` | **the write path** — resolve/rename dir, then write `node.md` |
+| `renameDir(old,new)` | fast path `fs.rename`, fallback `copyDir` + delete |
+| `deleteNoteDir(dir)` | `remove` + always revoke cached object URLs |
+| `duplicateNote(src)` | copy dir, fresh id, re-key object URLs |
+| `listAttachments(dir)` | scan `attachment/`, skip dotfiles |
+| `addAttachment(note,blob,name)` | sanitise, dedupe, write, register |
+| `writeAttachment(note,att,blob)` | **in-place** overwrite (the image-editor save) |
+| `ensureAttachmentUrl(dir,file)` | cache-or-create an object URL |
+| `readAttachmentBlob(dir,file)` | for export |
+| `loadConfig()` / `saveConfig()` | `.notes/config.json` |
+| `private writeLock` | a **mutex** serialising all mutating operations |
+
+**Note:** the repository has **no** debounce. Debouncing lives in the store
+(600 ms); the repository contributes the **mutex** so queued saves never
+interleave (`repo.ts:128`).
+
+### 7.5 `storageDirBase` — the metadata folder name
+
+`repo.ts:92-112`:
+```
+[Archive_]FolderName(_LabelName…)_NoteTitle
+```
+joined with `_`, then passed through `sanitizeName`. Recomputed on **every**
+save; if it differs from the current `dir`, the folder is renamed. That is why
+archiving, moving between folders, adding a label or renaming the title all
+update the filesystem name automatically.
+
+`sanitizeName` (`markdown.ts:228-238`) replaces forbidden characters with
+**full-width look-alikes** so titles stay readable:
+`/ → ／`, `\ → ＼`, `: → ：`, `* → ＊`, `? → ？`, `" → ＂`, `< → ＜`,
+`> → ＞`, `| → ｜`, newline → `-`, tab → space. Strips control chars, leading
+dots and trailing dots/spaces, caps at 80 chars.
+
+`uniqueName` (`markdown.ts:252-268`) produces `Base`, `Base (2)`, `Base (3)`…
+case-insensitively, with extension detection (`dot > 0 && len - dot <= 12`).
+
+### 7.6 Where each piece of state actually lives
+
+| Concern | Where |
+|---|---|
+| title, body, colour, pin, archive, trash, vault flag, folder, labels, order, timestamps | **`node.md` front-matter** |
+| task checkboxes | **`node.md` body** as `- [ ]` / `- [x]` |
+| attachments | `<note>/attachment/*` |
+| folder emoji/tint, label names | `.notes/config.json` |
+| the chosen storage root | localStorage (`notes-fs-kind`) / IndexedDB handle / `notes-root-path` |
+| app settings | localStorage `notes-app-settings-v1` |
+| vault record | localStorage `notes-vault-record-v2` |
+| vault session | **sessionStorage** `notes-vault-open` (cleared on tab close) |
+
+`ARCHITECTURE.md:§5` states the design rule plainly: note data never lives in
+JSON or a database. `.notes/config.json` holds *only* app-level metadata that
+cannot live inside a single note.
+
+### 7.7 The vault — **UI gate, not encryption**
+
+This is the most commonly misunderstood part of the app, so it is stated
+plainly:
+
+> **No note bytes are ever encrypted. Vaulted notes are ordinary plaintext
+> `node.md` files with a `vaulted: true` front-matter flag.**
+
+`storageDirBase` does **not** include vault state, so a vaulted note sits in a
+normal folder with a normal name. `lib/vault.ts` (316 lines) is a **credential
+store + UI gate**:
+
+| | |
+|---|---|
+| Hash | **PBKDF2-SHA256, 150,000 iterations**, per-record random 16-byte salt |
+| Storage | `localStorage["notes-vault-record-v2"]` — **hashes only**, never the password |
+| Session | `sessionStorage["notes-vault-open"] = "1"` |
+| Security questions | **15** available, 2 recorded, each with its own salt + hash |
+| Change password | requires the current password |
+| Forgot password | **≥ 1 of 2 correct answers** is sufficient — no current password needed |
+| Legacy migration | a V5 `sha256(password)` record transparently upgrades to v2 on first successful verify |
+| Enforcement | `scopeNotes` filters `vaulted` notes out of every non-vault view; `KeepApp` bounces you out of the vault view when it closes |
+
+`fm.bool` accepts only `true` and the literal string `"true"` — `True`, `TRUE`,
+`yes`, `on`, `1` all parse as false, so a hand-edited note can silently lose
+its `vaulted`/`trashed` flag.
+
+### 7.8 Export & import
+
+**Export** (`ExportDialog.tsx`) — format 3 ZIP:
+```
+manifest.json                      { app, format, exportedAt, counts }
+notes/<Folder>/<Note>/node.md      same node.md format as on disk
+notes/<Note>/attachment/…
+_vault/<Note>/…                    vault notes (password-gated)
+README.txt                         human instructions
+config.json                        folders + labels
+```
+Options: scope (all/folder/label), include images, include archive, include
+vault (prompts for the password if the vault is locked). Built with `JSZip`,
+DEFLATE. **App settings are deliberately never included.**
+
+**Import** (`ImportDialog.tsx`) accepts both the V6 layout and **legacy V5**
+exports. Restores every note folder, folder definitions and label names
+(merged, no duplicates). App settings are deliberately never imported.
+
+### 7.9 Atomicity & durability summary
+
+| Platform | Write | Durable? |
+|---|---|---|
+| Web / OPFS | `createWritable()` writes to a swap file, `close()` replaces | platform-managed |
+| Android | `.tmp` + `renameTo`, fallback to a direct write | **no `fsync`** — a hard power-off can lose the last write |
+
+---
+
+## 8. State management
+
+### 8.1 The zustand store — `store.ts` (1,211 lines)
+
+One store for the whole app. `KeepState` contains ~70 members.
+
+| Group | Members |
+|---|---|
+| data | `notes`, `folders`, `labels`, `loaded`, `loadError` |
+| storage | `storageStatus` (`loading\|setup\|reauth\|ready\|error`), `storageKind`, `rootLabel`, `storageError`, `scanVersion` |
+| storage actions | `chooseFolder`, `selectInAppStorage`, `reauthorize`, `changeFolder`, `rescan`, `bootstrap` |
+| view | `view`, `activeFolderId`, `activeLabelId`, `search`, `layout`, `viewHistory` |
+| editor | `editorNoteId`, `draftNote` |
+| overlays | `lightbox`, `imageEditor`, `settingsOpen`, `vaultOpen`, `vaultCodePrompt`, `vaultSetupOpen` |
+| note ops | `createNote`, `updateNote`, `flushUpdate`, `flushAll`, `toggleItem`, `toggleLabel`, `trashNote`, `restoreNote`, `deleteForever`, `emptyTrash`, `duplicateNote`, `reorderNotes` |
+| media | `addNoteMedia`, `removeNoteAttachment`, `renameNoteAttachment`, `openImageEditor`, `saveEditedImage` |
+| folders/labels | `createFolder`, `updateFolder`, `deleteFolder`, `createLabel`, `renameLabel`, `deleteLabel` |
+| vault | `requestVaultAccess`, `closeVault`, `resolveVaultCode`, `completeVaultSetup` |
+| nav | `backView` |
+
+Module-level (outside React) singletons: `repo`, `pendingSaves` (the debounce
+map), `draftMedia`, `materializeChain`, `lastMaterializedId`,
+`materializeTimer`.
+
+### 8.2 The autosave pipeline (three timers total)
+
+| Timer | Where | Duration | Purpose |
+|---|---|---|---|
+| editor push throttle | `MarkdownEditor.tsx:413-429` | **140 ms** leading+trailing | textarea → store |
+| store save debounce | `store.ts:638` | **600 ms** per note | store → disk |
+| draft materialise | `store.ts:187-193` | **500 ms** | in-memory draft → disk |
+
+Plus **flush points** that force everything immediately: editor close, editor
+unmount, `visibilitychange → hidden`, `beforeunload`, Android `onDestroy`
+(`window.__flushLocalData`).
+
+Retry on failure: up to **6** attempts with linear backoff `min(8000, 600 × retries)` ms, then an error toast (`store.ts:660-680`).
+
+### 8.3 Note scoping, search, ordering
+
+```ts
+scopeNotes(notes, view, folderId, labelId)   // store.ts:1146-1173
+```
+| View | Filter |
+|---|---|
+| `notes` | `!trashed && !archived && !vaulted` |
+| `archive` | `!trashed && archived && !vaulted` |
+| `trash` | `trashed` |
+| `folder` | `!trashed && !archived && !vaulted && folderId === id` |
+| `label` | `!trashed && !archived && !vaulted && labels.includes(id)` |
+| `vault` | `!trashed && vaulted` |
+
+`filterBySearch` (`:1175-1190`) searches **title, raw content, plain-text
+content, checklist item text, label names, folder name, and attachment file
+names** — all NFKC-normalised and lower-cased.
+
+`sortNotes` (`:1196-1208`): if **any** note has a manual `order`, manually
+ordered notes sort first (by `order`), and unordered ones fall back to
+`updatedAt` recency after them. If **none** has a manual order, pure recency.
+
+---
+
+## 9. UI components & views
+
+### 9.1 App shell
+
+| File | LOC | Role |
+|---|---|---|
+| `KeepApp.tsx` | 531 | root; storage setup/reauth screens, folder picker, "open with" handler, wallpaper, view routing |
+| `Sidebar.tsx` | 380 | full-height rail: Notes · Folders · Archive · Vault · Trash, then folders, then labels, then Settings + Wallpaper |
+| `TopBar.tsx` | 196 | title, search field, layout toggle, moon/sun/system menu, new-note button |
+| `NotesView.tsx` | 150 | grid/list + pinned section, uses `MuuriGrid` |
+| `FoldersView.tsx` | 242 | folder manager with preview cards |
+| `Composer.tsx` | 79 | "Take a note…" bar → text / checklist / with-image |
+| `EmptyState.tsx` | 23 | per-view empty state |
+| `NoteCard.tsx` | 683 | the card: media strip, title, plain-text preview, pin/colour/more menu |
+
+### 9.2 Muuri grid — `MuuriGrid.tsx` (632 lines)
+
+| Setting | Default |
+|---|---|
+| `minColWidth` | 220 px |
+| `maxCols` | 4 |
+| `colsOverride` | `1` for list view |
+| `dragEnabled` | true (when > 1 item) |
+| easing | `cubic-bezier(0.22, 1, 0.36, 1)` everywhere |
+
+Gesture constants: **touch long-press 220 ms**, cancel if moved > **10 px**;
+mouse drag after **4 px**. Haptic tick on lift. Clicks right after a drag are
+swallowed.
+
+The component is stable with React by a strict contract, documented at `:14-50`:
+React owns the **set** of cards and their order; Muuri owns **positions** and
+writes transforms directly. During a drag Muuri reorders only its internal
+array, never the DOM, so a React re-render can't teleport a floating card.
+The order is committed to the store **once**, after the release animation.
+`touchAction: 'auto'` keeps cards scrollable, and `touchmove` is only
+preventDefault'd while a drag is active.
+
+---
+
+## 10. Platform / Android
+
+### 10.1 The shell
+
+`android/src/com/notes/app/MainActivity.java` (~850 lines) — a WebView host
+over `https://appassets.androidplatform.net`, serving from `assets/` via a
+custom `WebViewClient.shouldInterceptRequest`.
+
+### 10.2 Manifest
+
+- `MANAGE_EXTERNAL_STORAGE` (All files access, API 30+)
+- legacy `WRITE_EXTERNAL_STORAGE` + `READ_EXTERNAL_STORAGE`
+- `android:requestLegacyExternalStorage` for ≤ Android 10
+- `minSdk 24`, `targetSdk 34`, `versionCode 110`, `versionName "11.0"`
+- `<intent-filter>` for `ACTION_VIEW` on `.txt` / `.md` → **"Open with"** support
+
+### 10.3 The JS bridge — 21 `@JavascriptInterface` methods
+
+| Group | Methods |
+|---|---|
+| Filesystem (10) | `fsInfo`, `fsList`, `fsReadText`, `fsReadBase64`, `fsWriteText`, `fsWriteBase64`, `fsMkdir`, `fsRename`, `fsDelete`, `fsExists` |
+| Permissions (2) | `hasAllFilesAccess`, `requestAllFilesAccess` |
+| Shell / system (6) | `isSystemDark`, `setSystemBars`, `setWebViewBackground`, `toast`, `vibrate`, `closeApp` |
+| Export (1) | `saveFile(name, base64)` → MediaStore `Download/Notes` (API 29+) or a real File below |
+| Unused (2) | `setModalOpen`, `setStatusBarColors` |
+
+All FS methods return a **JSON envelope** `{ok, data?, error?}`.
+`getBridge()` gates on `typeof bridge.fsList === "function"`.
+
+### 10.4 Unified BACK handling — `lib/back-nav.ts`
+
+A **LIFO stack of back handlers** consumed by whichever platform is present:
+
+- **Android** — `MainActivity.onBackPressed()` evaluates
+  `window.__handleAndroidBack()`; if it doesn't contain `"true"`, the shell
+  calls `moveTaskToBack(true)`.
+- **Web** — every layer pushes a **guarded history entry** on open;
+  `popstate` closes the top layer; closing through the layer's own UI
+  consumes its entry (`ignoreNextPop` guard).
+
+`useBackLayer(open, close)` is the React binding. Registered by: the lightbox,
+the image editor, the note editor, the gallery, the settings/export/import
+dialogs, and the mobile drawer.
+
+### 10.5 System theme + bars
+
+- `lib/android-theme.ts` **patches `window.matchMedia`** so
+  `prefers-color-scheme: dark` tracks the native UI mode. The shim is
+  installed at **module scope** in `theme-provider.tsx` — before `next-themes`
+  reads the query. Live updates arrive via `window.__systemThemeChanged(dark)`,
+  pushed from `onConfigurationChanged`.
+- `system-bars-sync.tsx` reads the resolved theme's `--background` / `--card`
+  and pushes them to `setSystemBars`, plus `setWebViewBackground`. It only
+  accepts `#rrggbb` / `#rrggbbaa` values (so pre-hydration `oklch()` values are
+  never sent) and keeps syncing via a `MutationObserver` on `<html>`'s
+  class/style.
+- `values-night/styles.xml` gives a correct dark **cold start** before the
+  WebView has painted anything.
+
+---
+
+## 11. Build, export & deploy
+
+### 11.1 Web export
+
+`scripts/build_web_export.sh`:
+```bash
+bun install          # only if node_modules is missing
+STATIC_EXPORT=true npx next build
+rm -rf android/assets && mkdir -p android/assets
+cp -r .next-static/. android/assets/
+find android/assets -name "*.map" -delete
+```
+
+`next.config.ts` branches on `STATIC_EXPORT`:
+- **static**: `output: "export"`, `images.unoptimized`, `distDir: ".next-static"`
+- **otherwise**: `output: "standalone"`; the `build` script then copies
+  `.next/static` and `public/` into `.next/standalone/` and runs `server.js`
+
+Two notable flags: **`typescript.ignoreBuildErrors: true`** (type errors do not
+fail the build) and **`reactStrictMode: false`** — the latter matters because
+the app holds module-level mutable singletons (adapter instance, `pendingSaves`,
+`urlCache`).
+
+### 11.2 APK build — `scripts/build_apk.sh`
+
+**No Gradle.** Pure `aapt2` → `javac` → `d8` → `jar` → `zip` → `zipalign` →
+`apksigner`:
+
+1. `aapt2 compile --dir android/res -o out/res.zip`
+2. `aapt2 link` → `out/base.apk` with `-A android/assets` (the web bundle is
+   embedded as assets)
+3. `javac -source 8 -target 8 -bootclasspath android.jar` over `android/src`
+4. `jar cf classes.jar` → `d8 --release --min-api 24` → `classes.dex`
+5. `zip` append the dex into the APK
+6. `zipalign -f -p 4`
+7. `apksigner sign` (+ v1 & v2) → `out/Notenoid.apk`, then `apksigner verify`
+
+`scripts/setup-sdk.sh` bootstraps `build-tools;35.0.0` + `platforms;android-34`
+(Linux only).
+
+`scripts/test-storage-naming.ts` (218 lines) is a real unit test: an in-memory
+`MemFS implements FSAdapter` plus 10 naming cases (including
+`storageDirBase({title:"a/b:c*d", folderId:"My/Dir"}) === "My／Dir_a／b：c＊d"`)
+and 11 repository scenarios (create → rename chain → archive prefix →
+attachments survive renames → `" (2)"` dedupe → scan round-trip → **legacy
+plain-dir note migrating on save** → `duplicateNote`).
+
+### 11.3 Caddyfile
+
+A **dev proxy only**: `:81` → `localhost:3000`, with a second branch keyed on
+`?XTransformPort=<n>` for fanning out to an arbitrary local dev port. It binds
+plain HTTP on all interfaces, serves no static files, and is never mentioned in
+the README. **It must not be exposed publicly** — the query-driven upstream is
+an SSRF pivot to any loopback port.
+
+---
+
+## 12. On-disk data formats
+
+### 12.1 `node.md`
+
+```markdown
+---
+id: "3f2a1b…-uuid"
+title: "Shopping List"
+type: "text"
+color: "default"
+pinned: false
+archived: false
+trashed: false
+vaulted: false
+folder: null
+labels: ["errands", "urgent"]
+order: null
+created: "2026-01-14T10:22:31.114Z"
+updated: "2026-01-14T10:31:02.887Z"
+---
+
+# Shopping List
+
+- [ ] Milk
+- [x] Bread
+
+![receipt](attachment/receipt%202.png)
+
+<div class="img-grid" data-cols="2">
+<img src="attachment/a.png" alt="a">
+<img src="attachment/b.png" alt="b">
+</div>
+```
+
+### 12.2 Front-matter support
+
+A deliberately tiny YAML subset (`frontmatter.ts:4-9`):
+`key: "string" | true | false | number | null | ["a", "b"]`.
+Strings are emitted as JSON double-quoted scalars, which is valid YAML.
+
+**13 modelled keys** — `id, title, type, color, pinned, archived, trashed,
+vaulted, folder, labels, order, created, updated`.
+
+**Unknown keys are preserved verbatim** so notes from Obsidian etc. survive a
+round-trip. *Caveats:* only single-level values parse (indentation is not
+tracked, so nested YAML and block sequences degrade), a key containing spaces
+is dropped on write-back, and multi-line unknown values are unrecoverably
+lost.
+
+`parseNoteFile` strips a BOM, normalises CRLF, and — critically — **if the
+closing `---` fence is missing, the entire file is treated as the body**, so
+user content is never lost.
+
+### 12.3 `.notes/config.json`
+
+```json
+{
+  "version": 1,
+  "folders": [{ "name": "Work", "emoji": "💼", "color": "blue" }],
+  "labels": ["errands", "urgent"]
+}
+```
+
+Only app-level metadata. **Note→folder and note→label links live in each
+`node.md`**, not here.
+
+---
+
+## 13. Findings, risks & notable behaviours
+
+Ordered by how much they matter in practice.
+
+### 13.1 Correctness / data-integrity
+
+1. **Directory rename is copy+delete on every browser.** `HandleFSAdapter.rename`
+   is file-only, so every title / archive / label / folder change on web and
+   OPFS copies the whole folder (`node.md` + all attachments, fully in memory)
+   and deletes the original. It is **not atomic**; a crash mid-copy leaves an
+   empty destination that the next `saveNote` happily writes into. Only
+   Android gets the cheap `File.renameTo` fast path. Sub-directories other
+   than `attachment/` are silently dropped by `copyDir`.
+2. **`assertSafePath` rejects the substring `..`, not the path segment.** A
+   note titled `Version 2..3` survives `sanitizeName` but every read and write
+   of it then throws `Unsafe path` — the note becomes permanently unreadable
+   and lands in `skippedDirs`.
+3. **`resolveDirFor`'s orphan reclaim can delete a directory a concurrent
+   import or scan is about to populate** (it removes any dir with the
+   desired name that has no `node.md`, swallowing errors).
+4. **`extraMeta` is dropped in two flows** — the duplicate-ID repair during
+   `scan()`, and `duplicateNote`. Unknown front-matter keys are destroyed there.
+5. **Front-matter is single-level only.** Indentation isn't tracked, so
+   Obsidian-style nested YAML, block sequences and multi-line scalars degrade;
+   a multi-line unknown value is lost on the next save.
+6. **No `fsync` on Android writes** — a hard power-off can lose the last save.
+7. **`updated` is only as fresh as the caller makes it.** `saveNote` writes
+   `note.updatedAt` verbatim; the timestamp is generated in the store.
+
+### 13.2 Security & privacy
+
+8. **The vault is not encryption.** Vaulted notes are plaintext `node.md` in
+   ordinary folders. Passwords and answers are PBKDF2-SHA256 × 150,000
+   (good), but they gate the **UI only**.
+9. **`allowBackup="true"`** in the manifest, and the WebView `localStorage`
+   holds the vault record — so the password **hashes** are eligible for
+   Android backup / cloud transfer.
+10. **The APK signing key is generated on the build machine with a hard-coded
+    password** (`notesapp123`) and sits in `keystore/` in the repo. Anyone
+    with the source can sign an "update" to an installed copy.
+11. **Caddy SSRF** — the `?XTransformPort=` matcher proxies to an
+    attacker-chosen loopback port.
+12. **`rehype-raw` renders raw HTML in notes.** Acceptable for the user's own
+    local files; a note from an untrusted source could carry HTML.
+    `previewUrlTransform` does still block `javascript:`/`vbscript:`.
+13. **The "Open with" filename bridge escapes only `\` and `'`** before
+    building a JS string literal. The base64 payload can't contain either, but
+    the **filename** comes from `DISPLAY_NAME` and can — a crafted name breaks
+    the literal.
+14. **`onConsoleMessage` returns `true` unconditionally** — all console output
+    is swallowed on device, including real errors. Combined with
+    `typescript.ignoreBuildErrors: true`, field failures are invisible.
+
+### 13.3 Dead / inert code
+
+| Item | Status |
+|---|---|
+| `.md-image-size-btn`, `.md-image-active` CSS | **dead** — the V10 rewrite removed the always-visible button |
+| `.md-codeblock` CSS | **dead** — the component emits `pre > code.md-code-content` |
+| `DENSITY_CLASS.cardMb / listGap / pad` | **never read**; only `gridGap` is live |
+| `tailwind.config.ts` | **inert** — Tailwind v4 with no `@config` directive |
+| `--ui-scale` var | only in a comment; the real mechanism is `documentElement.style.fontSize` |
+| `--note-media-single-max` | **never set** — always resolves the `100%` fallback |
+| `isAndroidPlatform()`, `noteStorageDir()`, `removeAbsolute()` | exported, never called |
+| `Bridge.setModalOpen` / `overlayOpen` | field never read |
+| `Bridge.vibrate`, `setStatusBarColors` | implemented, never called |
+| `notes:open-permissions` event | dispatched, **no listener** |
+| `getRepo` in `SettingsDialog.tsx:45` | imported, never used |
+| `.md-image-menu` | declared **4×**; only the last declarations win |
+
+### 13.4 Doc / code drift
+
+| Claim | Reality |
+|---|---|
+| About badge says **v9.0** | `package.json` = **11.0.0** |
+| About says "29 colours" | `KEEP_COLORS.length` = **30** |
+| README says "36 themes" | **37** (+ system = 38 buttons) |
+| README says "H1–H4" in the toolbar | toolbar offers **H1–H3** |
+| `themes.ts` header says "24 full-app themes" | **37** |
+| Many comments reference **TipTap / tiptap-markdown** | the editor is now a textarea + `react-markdown`; the comments are stale |
+| `local-api-install.ts` referenced in `next.config.ts:3-5` | **file does not exist** in the source |
+| `globals.css` comments reference ProseMirror / `is-editor-empty` | the editor is a plain textarea; those rules are dead |
+
+### 13.5 Performance notes
+
+- **`scan()` is fully sequential** — N folders × (1 `listDir` + 1 `readText` + 1 `listDir`), with no persistent index.
+- **`DirEntry.size` is never populated on web/OPFS**, so every attachment reports
+  `0` bytes there. The V8.5 duplicate-upload guard keys on `name + blob.size`,
+  so on web it only reliably protects within one session.
+- **`listRootDirs()` swallows all errors → `[]`**, so with a revoked
+  permission `uniqueName(base, [])` returns the un-deduped base and a save can
+  target an existing directory name.
+- **Base64 on the Android bridge is synchronous and un-chunked** — a 100 MB
+  attachment transiently needs ~200 MB of heap and blocks the WebView JS
+  thread. Attachments are already fully in memory JS-side, so peak is ~3–4×.
+- Debounce-retry stores an **empty patch** (`store.ts:676`), so one failed save
+  re-persists the whole current in-memory note.
+- The draft materialisation drift check compares `latest.labels !== draft.labels`
+  — an **array identity** comparison that is `true` on essentially every
+  concurrent label edit. The other eight fields compared are value comparisons
+  and behave correctly.
+
+### 13.6 Things that are notably well done
+
+Worth calling out, since a report that only lists problems is half a report:
+
+- **The `blob:` URL invariant is structurally guaranteed** — `fromDisplay()`
+  runs inside `updateDraft()` and every programmatic mutation, so a blob URL
+  cannot reach disk.
+- **Lost-write protection is thorough** — three independent flush points plus
+  a 6-attempt backoff on disk failure.
+- **The scroll-anchoring system is genuinely exact**, not heuristic: source
+  lines on every block give a lossless line↔block mapping, and the settle-pin
+  hands control back to the user within 6 px.
+- **The math preprocessor's line-count guarantee** is what makes math support
+  compatible with the scroll anchoring — a non-obvious but well-reasoned coupling.
+- **`previewUrlTransform` widens the allow-list without dropping the
+  sanitizer** — the XSS boundary is intact.
+- **Settings migrations are versioned and non-destructive** — only the untouched
+  default is rewritten, user-chosen names are preserved.
+- **Self-healing on save**: `saveNote` always `makeDir`s the target first
+  (V7 fix for an interrupted rename leaving it missing).
+
+---
+
+## Appendix A — complete file map
+
+All 77 source files with line counts. Sorted by size.
+
+### `src/components/keep/` — the app UI (24 files)
+
+| LOC | File | Role |
+|---|---|---|
+| 1472 | `editor/MarkdownEditor.tsx` | **the markdown editor** (§4) |
+| 1211 | `store.ts` | zustand store, autosave, vault, CRUD (§8) |
+| 1150 | `NoteEditorView.tsx` | full-screen note editor + attachment grid (§5) |
+| 1021 | `SettingsDialog.tsx` | every app setting (§6) |
+| 780 | `ImageEditorDialog.tsx` | crop / draw / text image editor (§5.11) |
+| 683 | `NoteCard.tsx` | the note card |
+| 632 | `MuuriGrid.tsx` | Muuri drag & drop masonry grid (§9.2) |
+| 531 | `KeepApp.tsx` | app shell, storage setup, "open with" |
+| 380 | `Sidebar.tsx` | navigation rail |
+| 323 | `ImportDialog.tsx` | ZIP import (§7.8) |
+| 320 | `ExportDialog.tsx` | ZIP export (§7.8) |
+| 257 | `FolderDialog.tsx` | create/edit folder, custom emoji |
+| 246 | `VaultDialogs.tsx` | vault password + setup dialogs |
+| 242 | `FoldersView.tsx` | folder manager |
+| 234 | `ImageInsertPopover.tsx` | **insert-at-cursor picker** (§5.6) |
+| 214 | `MediaPickPopover.tsx` | upload / by-URL media popover |
+| 198 | `FolderPickerDialog.tsx` | Android real-folder picker |
+| 196 | `TopBar.tsx` | title, search, layout, theme menu |
+| 175 | `Lightbox.tsx` | image lightbox + toolbar (§5.10) |
+| 173 | `LabelsManager.tsx` | label CRUD modal |
+| 167 | `settings-store.ts` | settings external store (§6.1) |
+| 150 | `NotesView.tsx` | notes grid/list |
+| 136 | `MediaPickPopover.tsx` | — |
+| 123 | `ColorPicker.tsx` | 30-swatch note colour picker |
+| 121 | `LabelsPopover.tsx` | per-note label toggles |
+| 118 | `ThemeController.tsx` | applies theme + scale + font CSS vars |
+| 103 | `media.ts` | **image compress / ingest** (§5.5) |
+| 79 | `Composer.tsx` | "Take a note…" bar |
+| 57 | `attachment-url.ts` | lazy attachment URL resolution (§5.8) |
+| 54 | `system-bars-sync.tsx` | Android status/nav bar colours |
+| 53 | `theme-mode.ts` | active light/dark verdict |
+| 23 | `EmptyState.tsx` | per-view empty state |
+| 19 | `MuuriGridLazy.tsx` | lazy MuuriGrid wrapper |
+| 16 | `theme-provider.tsx` | next-themes + Android shim install |
+
+### `src/core/` — platform-agnostic (7 files)
+
+| LOC | File | Role |
+|---|---|---|
+| 623 | `repo.ts` | `NoteRepository` + `storageDirBase` (§7.4) |
+| 394 | `markdown.ts` | note ⇄ `node.md`, tasks, safe names, encoding (§12) |
+| 273 | `fs/android-fs.ts` | Android bridge adapter (§7.3) |
+| 214 | `fs/handle-fs.ts` | shared handle walking (web + OPFS) |
+| 182 | `frontmatter.ts` | the YAML subset (§12.2) |
+| 154 | `fs/adapter.ts` | `FSAdapter` contract + path helpers (§7.1) |
+| 91 | `types.ts` | `NoteDTO`, `AttachmentDTO`, `ViewKind`, … |
+| 87 | `fs/web-fs.ts` | File System Access adapter |
+| 85 | `fs/index.ts` | adapter selection (§7.2) |
+| 35 | `fs/opfs-fs.ts` | OPFS adapter |
+
+### `src/lib/` — utilities (12 files)
+
+| LOC | File | Role |
+|---|---|---|
+| 715 | `themes.ts` | 34 themes + colour maths (§6.5) |
+| 350 | `keep-constants.ts` | 30 note colours, folder emojis/tints |
+| 316 | `vault.ts` | PBKDF2 credential store (**no encryption**, §7.7) |
+| 213 | `math-pre.ts` | **math delimiter preprocessor** (§4.8) |
+| 156 | `back-nav.ts` | unified BACK stack (§10.4) |
+| 100 | `themes-special.ts` | Frutiger Aero, Vaporwave, Aurora |
+| 87 | `android-theme.ts` | `matchMedia` shim for the WebView |
+| 74 | `fonts.ts` | 14 font choices |
+| 58 | `save-blob.ts` | download helper |
+| 6 | `utils.ts` | `cn()` |
+| 2 | `types.ts` | re-export |
+
+### `src/components/ui/` — vendored shadcn/Radix (15 files)
+
+`alert-dialog` `button` `dialog` `dropdown-menu` `input` `label` `popover`
+`select` `separator` `slider` `sonner` `switch` `tabs` `tooltip`
+
+### `src/hooks/`
+
+`use-is-touch.ts` (20) · `use-mobile.ts` (19)
+
+### `src/app/`
+
+`globals.css` (1022) · `layout.tsx` (94) · `page.tsx` (5)
+
+### Android shell
+
+`android/src/com/notes/app/MainActivity.java` (~850) ·
+`android/AndroidManifest.xml` · `res/` (icons, styles, colours) ·
+`assets/` (the 5.5 MB web bundle)
+
+### Build & scripts
+
+`next.config.ts` · `tsconfig.json` · `components.json` · `eslint.config.mjs` ·
+`tailwind.config.ts` (inert) · `postcss.config.mjs` · `Caddyfile` ·
+`scripts/build_apk.sh` · `scripts/build_web_export.sh` · `scripts/setup-sdk.sh` ·
+`scripts/test-storage-naming.ts` · `scripts/gen_icons.py`
+
+### Docs
+
+`README.md` · `docs/ARCHITECTURE.md` · `docs/BUILD.md` ·
+`RELEASE-NOTES-V5.md` … `V8.5.md`
+
+---
+
+## Appendix B — quick reference
+
+### The 21 markdown actions
+
+```
+bold **  italic *  underline <u>  strike ~~  code `
+h1 "# "  h2 "## "  h3 "### "  paragraph  ul "- "  ol "1. "
+todo "- [ ] "  quote "> "  codeblock ```  hr ---  table
+link [t](u)  remove-link  clear  multi  undo  redo
+```
+
+### The 23 toolbar buttons
+
+```
+👁/✎ preview │ B I U S ` │ # ## ### ¶ │ • 1. ☑ ❝ {} │
+🔗 🔗✖ 🖼 🖼🖼 ─ ▦ ⌫ ⧉ │ ↶ ↷
+```
+
+### The preview pipeline
+
+```
+remark-gfm → [remark-math] → rehypeUpgradeDisplayMath → rehype-raw → [rehype-katex]
+```
+
+### The image insert rule
+
+```
+1 image  → ![alt](url)                      (plain markdown)
+2–4      → <div class="img-grid" data-cols="2">…</div>
+5+       → <div class="img-grid" data-cols="3">…</div>
+```
+
+### The three timing constants
+
+```
+140 ms   editor → store throttle
+600 ms   store → disk debounce
+500 ms   draft materialisation
+```
+
+### The storage name scheme
+
+```
+[Archive_]FolderName(_LabelName…)_NoteTitle/
+```
+
+### The front-matter keys
+
+```
+id title type color pinned archived trashed vaulted folder labels order created updated
+```
+
+### The three storage adapters
+
+```
+AndroidBridge?      → android  (java.io.File via JS bridge, base64)
+showDirectoryPicker → web      (real folder, IndexedDB handle)
+navigator.storage   → opfs     (origin private, Firefox/Safari)
+```
+
+### The 37 themes
+
+```
+classic  Keep Light · Keep Dark
+light    Sky Blue · Fresh Mint · Lavender · Rose Quartz · Warm Peach · Sandy Beige · Cool Slate
+dark     Midnight Blue · Espresso · Forest Night · Deep Plum · Charcoal · Twitter Dim
+comfy    GitHub Light/Dark · Catppuccin Latte/Mocha · Solarized Light/Dark · One Dark
+         T3 Chat · T3 Ghost · Nord · Dracula · Gruvbox · Rosé Pine · Tokyo Night
+         Everforest · Kanagawa
+contrast High Contrast Light/Dark/Navy
+special  Frutiger Aero · Vaporwave · Aurora
+```
+
+### The 14 fonts
+
+```
+default inter roboto open-sans nunito poppins lora merriweather playfair
+jetbrains-mono fira-code ibm-plex-mono comic-neue caveat
+```
+
+### The 6 sidebar views
+
+```
+notes · folders · archive · vault · trash   (+ folder: / label: detail views)
+```
+
+---
+
+*End of report. Every claim in this document was read directly from the source
+files listed; line references are provided so each can be verified.*
