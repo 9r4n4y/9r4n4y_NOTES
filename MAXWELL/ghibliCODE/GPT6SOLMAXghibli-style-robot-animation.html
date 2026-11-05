@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#101719">
+  <title>The Forest Remembers | An Animated Scene</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101719; }
+    body { font-family: Georgia, "Times New Roman", serif; color: #f0e6d0; }
+    .film { position: fixed; inset: 0; overflow: hidden; background: #101719; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .top-matte, .bottom-matte { position: absolute; left: 0; right: 0; background: #101719; z-index: 2; }
+    .top-matte { top: 0; height: clamp(25px, 4.6vh, 47px); box-shadow: 0 4px 20px #10171930; }
+    .bottom-matte { bottom: 0; height: clamp(51px, 7vh, 68px); box-shadow: 0 -5px 24px #10171940; }
+    .film-name { position: absolute; z-index: 3; top: clamp(8px, 1.35vh, 15px); left: clamp(18px, 3.5vw, 58px); margin: 0; color: #d8d7c7; font: 500 11px/1.4 Georgia, serif; letter-spacing: .26em; text-transform: uppercase; white-space: nowrap; }
+    .controls { position: absolute; z-index: 4; bottom: 0; left: 0; right: 0; height: clamp(51px, 7vh, 68px); display: flex; align-items: center; gap: clamp(15px, 2.5vw, 34px); padding: 0 clamp(18px, 3.5vw, 58px); }
+    button { appearance: none; border: 0; background: transparent; color: #dadace; cursor: pointer; padding: 8px 0; font: 500 10px/1.2 Arial, sans-serif; letter-spacing: .18em; white-space: nowrap; transition: color .2s ease, opacity .2s ease; }
+    button:hover, button:focus-visible { color: #f7cf85; }
+    button:focus-visible, input:focus-visible { outline: 1px solid #f7cf85; outline-offset: 5px; }
+    #scrub { appearance: none; -webkit-appearance: none; flex: 1; min-width: 40px; height: 20px; margin: 0; cursor: pointer; background: transparent; --progress: 0%; }
+    #scrub::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(to right, #e4bb79 0%, #e4bb79 var(--progress), #68716e var(--progress), #68716e 100%); }
+    #scrub::-moz-range-track { height: 2px; background: #68716e; }
+    #scrub::-moz-range-progress { height: 2px; background: #e4bb79; }
+    #scrub::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 7px; height: 7px; margin-top: -2.5px; border-radius: 50%; background: #f2d69f; box-shadow: 0 0 8px #f3d79280; }
+    #scrub::-moz-range-thumb { width: 7px; height: 7px; border: 0; border-radius: 50%; background: #f2d69f; }
+    .time { min-width: 30px; color: #9fa8a1; font: 10px/1 Arial, sans-serif; letter-spacing: .1em; text-align: right; }
+    .opening-title { position: absolute; z-index: 1; left: clamp(24px, 8vw, 140px); bottom: clamp(95px, 13vh, 155px); pointer-events: none; color: #f5e9ce; text-shadow: 0 2px 13px #152122c7; font: 400 clamp(24px, 3.35vw, 53px)/1.1 Georgia, serif; letter-spacing: .055em; opacity: 0; transform: translateY(9px); transition: opacity 1.2s ease, transform 1.2s ease; }
+    .opening-title.visible { opacity: .9; transform: translateY(0); }
+    @media (max-width: 650px) {
+      .film-name { font-size: 9px; letter-spacing: .16em; }
+      .controls { gap: 12px; }
+      button { font-size: 9px; letter-spacing: .07em; }
+      .time { display: none; }
+      .opening-title { font-size: 23px; max-width: 80vw; }
+    }
+  </style>
+</head>
+<body>
+  <main class="film" aria-label="The Forest Remembers, an animated forest and robot film">
+    <canvas id="stage" aria-label="An ancient moss-covered robot wakes in a sunrise forest and flies into the sky">Your browser needs canvas to play this animated scene.</canvas>
+    <div class="opening-title" id="openingTitle" aria-hidden="true">The forest remembers.</div>
+    <div class="top-matte" aria-hidden="true"></div>
+    <h1 class="film-name">The Forest Remembers</h1>
+    <div class="bottom-matte" aria-hidden="true"></div>
+    <div class="controls" aria-label="Film controls">
+      <button id="playButton" type="button" aria-label="Pause film">PAUSE</button>
+      <input id="scrub" type="range" min="0" max="28" step="0.01" value="0" aria-label="Seek through film">
+      <span class="time" id="timeLabel" aria-hidden="true">0:00</span>
+      <button id="soundButton" type="button" aria-label="Turn on sound">SOUND OFF</button>
+      <button id="replayButton" type="button" aria-label="Replay film">REPLAY</button>
+    </div>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+
+    const W = 1600;
+    const H = 900;
+    const DURATION = 28;
+    const INK = '#293b3d';
+    const BONE = '#b8bbae';
+    const LIGHT = '#d9d3b9';
+    const SHADE = '#6d817d';
+    const RUST = '#a56e53';
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const scrub = document.getElementById('scrub');
+    const playButton = document.getElementById('playButton');
+    const soundButton = document.getElementById('soundButton');
+    const replayButton = document.getElementById('replayButton');
+    const timeLabel = document.getElementById('timeLabel');
+    const openingTitle = document.getElementById('openingTitle');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let elapsed = 0;
+    let paused = reduceMotion;
+    let lastFrame = performance.now();
+    let lastPaint = 0;
+    let size = { scale: 1, x: 0, y: 0 };
+
+    const clamp = (n, a = 0, b = 1) => Math.max(a, Math.min(b, n));
+    const mix = (a, b, t) => a + (b - a) * t;
+    const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+    function random(seed) {
+      let a = seed >>> 0;
+      return () => {
+        a += 0x6D2B79F5;
+        let v = a;
+        v = Math.imul(v ^ v >>> 15, v | 1);
+        v ^= v + Math.imul(v ^ v >>> 7, v | 61);
+        return ((v ^ v >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    function shape(g, d, fill, outline = null, width = 3) {
+      const p = new Path2D(d);
+      if (fill) { g.fillStyle = fill; g.fill(p); }
+      if (outline) {
+        g.lineJoin = 'round'; g.lineCap = 'round';
+        g.strokeStyle = outline; g.lineWidth = width; g.stroke(p);
+      }
+      return p;
+    }
+    function stroke(g, d, color, width = 2, alpha = 1) {
+      g.save(); g.globalAlpha *= alpha;
+      shape(g, d, null, color, width);
+      g.restore();
+    }
+    function brush(g, x, y, rx, ry, angle, color) {
+      g.save(); g.translate(x, y); g.rotate(angle);
+      g.fillStyle = color;
+      g.beginPath();
+      g.moveTo(-rx, -ry * .12);
+      g.quadraticCurveTo(-rx * .48, -ry * 1.1, rx * .12, -ry * .78);
+      g.lineTo(rx, -ry * .15);
+      g.quadraticCurveTo(rx * .43, ry * .72, -rx * .3, ry * .85);
+      g.closePath(); g.fill(); g.restore();
+    }
+    function roughMass(g, x, y, rx, ry, rand, color, points = 31) {
+      g.fillStyle = color; g.beginPath();
+      for (let i = 0; i <= points; i++) {
+        const a = i / points * Math.PI * 2;
+        const n = .84 + rand() * .26;
+        const xx = x + Math.cos(a) * rx * n;
+        const yy = y + Math.sin(a) * ry * n;
+        if (i === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy);
+      }
+      g.closePath(); g.fill();
+    }
+    function foliage(g, x, y, rx, ry, colors, seed, count = 130, alpha = 1) {
+      const r = random(seed);
+      g.save(); g.globalAlpha *= alpha;
+      roughMass(g, x, y, rx, ry, r, colors[0], 37);
+      for (let i = 0; i < count; i++) {
+        const theta = r() * Math.PI * 2;
+        const dist = Math.sqrt(r()) * .97;
+        const xx = x + Math.cos(theta) * rx * dist;
+        const yy = y + Math.sin(theta) * ry * dist;
+        const lightSide = (xx - x) / rx * .35 - (yy - y) / ry * .5;
+        let color = colors[1 + Math.floor(r() * (colors.length - 1))];
+        if (lightSide > .15 && r() > .42) color = colors[colors.length - 1];
+        brush(g, xx, yy, 3 + r() * rx * .075, 2 + r() * ry * .085,
+          -.8 + r() * 1.6, color);
+      }
+      g.restore();
+    }
+    function watercolorSky(g) {
+      const sky = g.createLinearGradient(0, 0, 130, 800);
+      sky.addColorStop(0, '#839aab');
+      sky.addColorStop(.29, '#aab4ae');
+      sky.addColorStop(.62, '#eac6a1');
+      sky.addColorStop(1, '#f6daa5');
+      g.fillStyle = sky; g.fillRect(0, 0, W, H);
+      const sun = g.createRadialGradient(1138, 168, 15, 1138, 168, 495);
+      sun.addColorStop(0, '#fff4c9ee');
+      sun.addColorStop(.16, '#ffe7adad');
+      sun.addColorStop(.58, '#f9cdab49');
+      sun.addColorStop(1, '#e2ba9a00');
+      g.fillStyle = sun; g.fillRect(0, 0, W, H);
+      const r = random(101);
+      for (let i = 0; i < 365; i++) {
+        const x = r() * 1700 - 50;
+        const y = 45 + r() * 600;
+        const w = 18 + r() * 95;
+        const c = y < 300 ? ['#e6d1bc12', '#f2d5b916', '#607f9110'] : ['#fce5bc20', '#d6b8a52b', '#fcf0cd22'];
+        brush(g, x, y, w, 1.5 + r() * 5, -.13 + r() * .28, c[Math.floor(r() * c.length)]);
+      }
+      shape(g, 'M0 405 C116 397 185 430 281 417 C370 402 454 411 523 424 C643 447 728 413 828 419 C921 422 1046 405 1167 415 C1376 424 1518 397 1600 409 L1600 474 C1371 447 1282 463 1084 449 C943 447 850 467 692 450 C489 439 325 473 0 452 Z', '#e6d5bd2a');
+      for (let i = 0; i < 54; i++) {
+        const x = r() * W, y = 372 + r() * 132;
+        brush(g, x, y, 20 + r() * 66, 1 + r() * 4, -.1,
+          r() > .5 ? '#fff3d32e' : '#667f8820');
+      }
+    }
+    function pineSilhouette(g, x, ground, height, width, color, seed) {
+      const r = random(seed);
+      g.save(); g.translate(x, ground);
+      g.strokeStyle = color; g.lineWidth = Math.max(2, width * .09);
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -height); g.stroke();
+      g.fillStyle = color; g.beginPath(); g.moveTo(0, -height);
+      for (let i = 1; i <= 14; i++) {
+        const yy = -height + i * height / 14;
+        const ww = width * (i / 14) * (.78 + r() * .32);
+        g.lineTo(-ww, yy - 5); g.lineTo(-ww * .68, yy + 6);
+      }
+      g.lineTo(width * .8, 0);
+      for (let i = 14; i >= 1; i--) {
+        const yy = -height + i * height / 14;
+        const ww = width * (i / 14) * (.78 + r() * .32);
+        g.lineTo(ww * .7, yy + 5); g.lineTo(ww, yy - 6);
+      }
+      g.closePath(); g.fill(); g.restore();
+    }
+    function tree(g, x, ground, h, width, colors, seed) {
+      const r = random(seed);
+      g.save(); g.translate(x, ground);
+      const lean = (r() - .5) * width * .4;
+      const trunk = `M ${-width * .47} 24 Q ${-width * .31} ${-h * .2} ${-width * .17 + lean} ${-h * .66} L ${-width * .15 + lean} ${-h * .92} L ${width * .12 + lean} ${-h * .92} Q ${width * .13 + lean} ${-h * .51} ${width * .35} ${-h * .2} L ${width * .61} 24 L ${width * .17} 5 L ${-width * .14} 3 Z`;
+      shape(g, trunk, colors.trunk, '#34463f78', 2.5);
+      shape(g, `M ${width * .05} ${-h * .83} Q ${width * .12} ${-h * .37} ${width * .38} 8 L ${width * .53} 20 L ${width * .14} 1 Z`, colors.bark);
+      for (let i = 0; i < 27; i++) {
+        const yy = -r() * h * .9;
+        const xx = (r() - .5) * width * .3 + lean * (-yy / h);
+        stroke(g, `M${xx.toFixed(1)} ${yy.toFixed(1)} q${(r() - .5) * 9} ${12 + r() * 25} ${(r() - .5) * 13} ${25 + r() * 33}`,
+          i % 3 ? colors.mark : colors.bark, .6 + r() * 2, .72);
+      }
+      for (const side of [-1, 1]) {
+        for (let j = 0; j < 3; j++) {
+          const by = -h * (.42 + j * .15);
+          const bx = side * width * (.8 + j * .5);
+          stroke(g, `M${lean * .4} ${by + 53} Q${side * width * .65} ${by - 3} ${bx} ${by - 38} Q${bx + side * width * .16} ${by - 62} ${bx + side * width * .55} ${by - 62}`,
+            colors.trunk, Math.max(3, width * (.2 - j * .035)));
+          stroke(g, `M${bx} ${by - 38} q${side * width * .4} -39 ${side * width * .42} -80`, colors.trunk, 3 + width * .035);
+        }
+      }
+      foliage(g, lean, -h * .86, width * 2.05, h * .18, colors.leaves, seed + 11, 200);
+      foliage(g, -width * 1.05, -h * .7, width * 1.22, h * .16, colors.leaves, seed + 29, 120);
+      foliage(g, width * 1.04, -h * .69, width * 1.28, h * .17, colors.leaves, seed + 41, 125);
+      foliage(g, -width * 1.37, -h * .53, width * .91, h * .12, colors.leaves, seed + 52, 85);
+      foliage(g, width * 1.45, -h * .52, width * .98, h * .125, colors.leaves, seed + 62, 85);
+      g.restore();
+    }
+    function paintGround(g, seed, details = true) {
+      const r = random(seed);
+      shape(g, 'M0 660 C160 638 263 674 400 653 C561 633 624 668 787 650 C988 626 1059 657 1230 637 C1398 623 1507 648 1600 627 L1600 900 L0 900 Z', '#596b57');
+      shape(g, 'M0 698 Q151 665 292 700 C391 716 527 687 646 708 C819 721 878 672 1034 672 C1210 665 1304 696 1600 665 L1600 900 L0 900 Z', '#70816a');
+      shape(g, 'M440 725 C610 699 784 709 910 698 C1051 686 1215 693 1431 679 L1600 691 L1600 900 L478 900 Z', '#a49b72a0');
+      for (let i = 0; i < (details ? 950 : 220); i++) {
+        const x = r() * 1660 - 30;
+        const y = 658 + r() * 255;
+        if (y < 710 && r() > .42) continue;
+        const warm = x > 760 && x < 1360 && r() > .4;
+        const c = warm ? ['#e1be7a55', '#b9b48683', '#e6c79555', '#6f7a626a'] : ['#354f4775', '#83907599', '#adb48a62', '#415e4d8a'];
+        brush(g, x, y, 3 + r() * 22, .7 + r() * 5, -.7 + r() * 1.4, c[Math.floor(r() * c.length)]);
+      }
+      if (!details) return;
+      for (let i = 0; i < 240; i++) {
+        const x = r() * W, y = 681 + r() * 219;
+        const ht = 5 + r() * 25;
+        stroke(g, `M${x.toFixed(1)} ${y.toFixed(1)} q${(r() - .5) * 9} ${(-ht * .55).toFixed(1)} ${(r() - .5) * 15} ${(-ht).toFixed(1)}`,
+          r() > .5 ? '#b1b79195' : '#364f4488', .7 + r() * 1.7);
+      }
+      for (let i = 0; i < 56; i++) {
+        const x = r() * W, y = 740 + r() * 145;
+        const c = r() > .4 ? '#f1ddaa' : '#a9c0b5';
+        brush(g, x, y, 1.5 + r() * 3, 1 + r() * 2, r() * 2, c);
+      }
+    }
+    function mistWash(g, seed) {
+      const r = random(seed);
+      for (let band = 0; band < 4; band++) {
+        const y = 490 + band * 68;
+        for (let i = 0; i < 75; i++) {
+          const x = r() * 1800 - 100;
+          brush(g, x, y + (r() - .5) * 57, 24 + r() * 105, 4 + r() * 18, -.12 + r() * .24,
+            band < 2 ? '#e3e8d31d' : '#f3eed544');
+        }
+      }
+    }
+    function paintedFern(g, x, y, scale, seed) {
+      const r = random(seed);
+      g.save(); g.translate(x, y); g.scale(scale, scale);
+      for (let stem = 0; stem < 4; stem++) {
+        const direction = (stem - 1.5) * 15 + (r() - .5) * 13;
+        const height = 33 + r() * 36;
+        stroke(g, `M0 0 Q${direction * .28} ${-height * .54} ${direction} ${-height}`,
+          '#405f4e', 1.5 + r());
+        for (let i = 2; i < 9; i++) {
+          const k = i / 9;
+          const bx = direction * k * k;
+          const by = -height * k;
+          const leafSize = (1 - k) * (10 + r() * 5);
+          for (const side of [-1, 1]) {
+            brush(g, bx + side * leafSize * .5, by + 2, leafSize * .74, 2 + r() * 1.6,
+              side * .38 + direction * .008,
+              r() > .5 ? '#73916b' : '#a3ad79');
+          }
+        }
+      }
+      g.restore();
+    }
+    function paintedStone(g, x, y, w, h, seed) {
+      const r = random(seed);
+      roughMass(g, x, y, w, h, r, '#485b52', 13);
+      roughMass(g, x - w * .1, y - h * .23, w * .76, h * .54, r, '#929b83', 12);
+      for (let i = 0; i < 35; i++) {
+        brush(g, x + (r() - .5) * w * 1.7, y + (r() - .5) * h * 1.2,
+          2 + r() * 10, .7 + r() * 3, r() * 3,
+          r() > .42 ? '#a9ac88' : '#42654d');
+      }
+      foliage(g, x - w * .38, y - h * .45, w * .38, h * .19,
+        ['#385f4b', '#547858', '#758c62', '#91a16d', '#b6b982'], seed + 3, 28, .83);
+    }
+    function makeLayer(painter) {
+      const layer = document.createElement('canvas');
+      layer.width = W; layer.height = H;
+      painter(layer.getContext('2d'));
+      return layer;
+    }
+    const forest = makeLayer(g => {
+      watercolorSky(g);
+      shape(g, 'M0 535 C116 511 172 535 281 501 C393 465 478 518 565 495 C674 464 751 496 860 480 C999 467 1029 493 1135 474 C1280 451 1423 480 1600 451 L1600 713 L0 713 Z', '#8b9b96a8');
+      shape(g, 'M0 592 C108 568 174 584 242 559 C354 525 424 567 515 542 C667 513 780 550 892 533 C1015 517 1119 555 1233 526 C1388 489 1494 521 1600 507 L1600 731 L0 731 Z', '#6b8580b8');
+      const r = random(77);
+      for (let i = 0; i < 72; i++) {
+        const x = -35 + i * 24 + (r() - .5) * 35;
+        pineSilhouette(g, x, 691 + r() * 31, 72 + r() * 198, 10 + r() * 32,
+          ['#536d66b0', '#637b70bd', '#7a8c7bb8'][Math.floor(r() * 3)], 110 + i);
+      }
+      paintGround(g, 712);
+      tree(g, 130, 742, 700, 86, {
+        trunk: '#3f554e', bark: '#647568', mark: '#a1a78a80',
+        leaves: ['#354e46', '#476653', '#5f775a', '#76906b', '#9ca680']
+      }, 310);
+      tree(g, 1485, 749, 736, 96, {
+        trunk: '#42564d', bark: '#647361', mark: '#a8a9877d',
+        leaves: ['#365247', '#4f6b56', '#65815f', '#87936c', '#bbc090']
+      }, 450);
+      tree(g, 399, 706, 405, 43, {
+        trunk: '#54695b', bark: '#778371', mark: '#bdba9880',
+        leaves: ['#486b58', '#648169', '#789675', '#9dad83', '#bbc599']
+      }, 519);
+      tree(g, 1286, 684, 400, 46, {
+        trunk: '#647465', bark: '#909378', mark: '#b9b393a0',
+        leaves: ['#57735e', '#76866b', '#93a07b', '#b2ae83', '#d3c591']
+      }, 561);
+      shape(g, 'M-25 809 C92 783 190 795 304 818 L367 842 L353 863 L156 837 L-25 854 Z', '#4b5948');
+      shape(g, 'M-25 812 C94 791 192 801 304 823 L344 843 L206 822 L-25 832 Z', '#869073');
+      stroke(g, 'M37 826 Q132 812 258 834 M94 833 l46 5 M206 841 l50 6', '#334e42', 2);
+      for (const [x, y, w, h, seed] of [[296, 772, 37, 21, 621], [1197, 797, 48, 26, 622],
+        [1341, 759, 30, 18, 623], [430, 846, 27, 17, 624], [1459, 840, 42, 22, 625]]) {
+        paintedStone(g, x, y, w, h, seed);
+      }
+      for (let i = 0; i < 19; i++) {
+        const x = i < 8 ? 54 + i * 48 : 1110 + (i - 8) * 46;
+        const y = 738 + (i * 39) % 146;
+        paintedFern(g, x, y, .58 + (i * 7 % 11) * .085, 1500 + i);
+      }
+      mistWash(g, 614);
+      const paint = random(921);
+      for (let i = 0; i < 420; i++) {
+        const x = paint() * W, y = 80 + paint() * 820;
+        brush(g, x, y, 1 + paint() * 4, .35 + paint() * 1.2, paint() * 3,
+          paint() > .5 ? '#fff2c822' : '#233f4016');
+      }
+    });
+    const foreground = makeLayer(g => {
+      const r = random(380);
+      shape(g, 'M0 0 L75 0 C57 122 88 241 61 337 C41 455 72 570 0 681 Z', '#293f3b99');
+      shape(g, 'M1600 0 L1547 0 C1525 126 1530 238 1556 348 C1582 483 1560 559 1600 624 Z', '#2e48419a');
+      stroke(g, 'M0 102 C171 93 196 169 268 195 C330 218 370 215 411 234', '#394c40', 21);
+      stroke(g, 'M1600 118 C1485 112 1406 166 1327 196 C1278 211 1244 201 1204 219', '#3c5144', 19);
+      foliage(g, 1, 90, 220, 121, ['#25413b', '#345a48', '#487153', '#66815c', '#91a076'], 701, 190, .94);
+      foliage(g, 1650, 88, 231, 124, ['#2a463e', '#3f604a', '#58765a', '#7e9068', '#a2a978'], 722, 190, .96);
+      foliage(g, -53, 463, 114, 257, ['#29433d', '#385847', '#55725a', '#718469', '#9aaa7b'], 724, 120, .88);
+      foliage(g, 1665, 478, 110, 266, ['#304a40', '#45644e', '#62805b', '#8c9369', '#acac7a'], 736, 120, .86);
+      for (let i = 0; i < 200; i++) {
+        const edge = r() > .5;
+        const x = edge ? 1180 + r() * 480 : r() * 440;
+        const y = 789 + r() * 128;
+        const h = 14 + r() * 66;
+        stroke(g, `M${x.toFixed(1)} ${y.toFixed(1)} Q${(x + (r() - .5) * 22).toFixed(1)} ${(y - h * .6).toFixed(1)} ${(x + (r() - .5) * 43).toFixed(1)} ${(y - h).toFixed(1)}`,
+          r() > .5 ? '#2d4e40' : '#899b6b', .7 + r() * 2.6, .8);
+      }
+      for (let i = 0; i < 19; i++) {
+        const x = i < 9 ? r() * 350 : 1290 + r() * 310;
+        const y = 720 + r() * 180;
+        brush(g, x, y, 17 + r() * 33, 8 + r() * 15, r() * 4,
+          r() > .5 ? '#385f49' : '#718362');
+      }
+    });
+    const skyScene = makeLayer(g => {
+      const sky = g.createLinearGradient(0, 0, 300, 900);
+      sky.addColorStop(0, '#7899ab');
+      sky.addColorStop(.39, '#b9bcae');
+      sky.addColorStop(.76, '#f4cd94');
+      sky.addColorStop(1, '#f1d69e');
+      g.fillStyle = sky; g.fillRect(0, 0, W, H);
+      const glow = g.createRadialGradient(1050, 250, 14, 1050, 250, 550);
+      glow.addColorStop(0, '#fff9dc'); glow.addColorStop(.15, '#ffefb7d1');
+      glow.addColorStop(.5, '#ffe4a560'); glow.addColorStop(1, '#eecfa100');
+      g.fillStyle = glow; g.fillRect(0, 0, W, H);
+      const r = random(9213);
+      for (let layer = 0; layer < 5; layer++) {
+        const y = 115 + layer * 142;
+        for (let i = 0; i < 44; i++) {
+          const x = r() * 1800 - 100;
+          const yy = y + (r() - .5) * 120;
+          const c = layer < 3 ? ['#f8ead452', '#f6ddbb44', '#647f9140', '#e5d3c14f'] : ['#fff0c47b', '#e7c8ad53', '#d5bda866', '#fff1d15e'];
+          brush(g, x, yy, 28 + r() * 132, 4 + r() * 19, -.19 + r() * .35, c[Math.floor(r() * c.length)]);
+        }
+      }
+      shape(g, 'M0 765 C190 735 305 776 446 751 C608 722 675 745 795 727 C915 717 1010 745 1143 713 C1292 682 1423 722 1600 680 L1600 900 L0 900 Z', '#8b977b9c');
+      const rr = random(657);
+      for (let i = 0; i < 89; i++) {
+        const x = i * 19 + (rr() - .5) * 18;
+        pineSilhouette(g, x, 880 + rr() * 19, 52 + rr() * 173, 10 + rr() * 24,
+          rr() > .5 ? '#567467bb' : '#69816eb5', i + 300);
+      }
+      shape(g, 'M0 826 C300 794 485 830 727 793 C1029 753 1205 824 1600 759 L1600 900 L0 900 Z', '#788771c7');
+      for (let i = 0; i < 250; i++) {
+        brush(g, rr() * W, 795 + rr() * 105, 8 + rr() * 48, 2 + rr() * 9, -.3 + rr() * .6,
+          rr() > .5 ? '#f8e7bb5c' : '#55706372');
+      }
+    });
+
+    function wear(g, clippedPath, bounds, seed, count) {
+      const r = random(seed);
+      g.save(); g.clip(clippedPath);
+      for (let i = 0; i < count; i++) {
+        const x = bounds[0] + r() * bounds[2];
+        const y = bounds[1] + r() * bounds[3];
+        if (r() < .58) {
+          stroke(g, `M${x.toFixed(1)} ${y.toFixed(1)} l${(2 + r() * 11).toFixed(1)} ${(-1 - r() * 5).toFixed(1)}`,
+            r() > .38 ? '#e8ddbd94' : '#344e4b8c', .65 + r() * 1.5);
+        } else {
+          const s = 1.3 + r() * 7;
+          brush(g, x, y, s, .7 + r() * 2.6, -.7 + r() * 1.4,
+            r() > .38 ? '#a97153ab' : '#465d568e');
+        }
+      }
+      g.restore();
+    }
+    function armor(g, d, base, shadow, highlight, seed, bounds, count = 34, lineWidth = 4) {
+      const p = shape(g, d, base);
+      if (shadow) shape(g, shadow, SHADE);
+      if (highlight) shape(g, highlight, LIGHT);
+      wear(g, p, bounds, seed, count);
+      g.lineJoin = 'round'; g.lineCap = 'round';
+      g.strokeStyle = INK; g.lineWidth = lineWidth; g.stroke(p);
+      return p;
+    }
+    function unevenCircle(g, x, y, radius, fill, outline = INK, width = 2.5) {
+      shape(g, `M${x - radius} ${y - 2} Q${x - radius * .88} ${y - radius * .85} ${x + 1} ${y - radius} Q${x + radius * .93} ${y - radius * .76} ${x + radius} ${y + 1} Q${x + radius * .82} ${y + radius * .9} ${x - 2} ${y + radius} Q${x - radius * .9} ${y + radius * .7} ${x - radius} ${y - 2} Z`, fill, outline, width);
+    }
+    function bolt(g, x, y, radius = 4) {
+      unevenCircle(g, x, y, radius, '#566c66', '#344746', 1.4);
+      stroke(g, `M${x - radius * .5} ${y + radius * .3} l${radius} ${-radius * .6}`, '#c9c3a8', .9);
+    }
+    function joint(g, x, y, radius) {
+      unevenCircle(g, x, y, radius, '#334b4e', INK, 3.5);
+      unevenCircle(g, x, y, radius * .62, '#7f8f83', '#263d3f', 2);
+      shape(g, `M${x - radius * .45} ${y - 2} L${x + radius * .32} ${y - radius * .45} L${x + radius * .52} ${y + radius * .13} L${x - radius * .09} ${y + radius * .51} Z`, '#b4b8a5');
+      bolt(g, x - radius * .14, y + 1, Math.max(2, radius * .12));
+    }
+    function segment(g, x1, y1, x2, y2, width, seed, base = BONE) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const length = Math.hypot(dx, dy);
+      g.save(); g.translate(x1, y1); g.rotate(Math.atan2(-dx, dy));
+      const a = width * .5;
+      const plate = `M${-a * .62} -12 L${a * .59} -10 L${a} 14 L${a * .84} ${length * .48} L${a * .68} ${length - 18} L${a * .36} ${length + 7} L${-a * .62} ${length + 2} L${-a * .9} ${length - 23} L${-a} ${length * .44} Z`;
+      const shadow = `M${a * .32} -9 L${a * .59} -10 L${a} 14 L${a * .84} ${length * .48} L${a * .68} ${length - 18} L${a * .36} ${length + 7} L${a * .16} ${length - 27} L${a * .4} ${length * .39} Z`;
+      const highlight = `M${-a * .69} 14 L${-a * .23} 3 L${-a * .49} ${length * .51} L${-a * .52} ${length - 23} L${-a * .75} ${length - 21} Z`;
+      armor(g, plate, base, shadow, highlight, seed, [-a, 0, width, length], 32, 3.7);
+      stroke(g, `M${-a * .68} ${length * .24} q${a * .7} -7 ${a * 1.06} 1`, '#465a57', 2.2);
+      stroke(g, `M${-a * .56} ${length * .75} l${a * .91} -8`, '#4c625e', 2);
+      stroke(g, `M${-a * .45} ${length * .81} l${a * .59} -5`, '#d9d2b7', 1.2);
+      bolt(g, -a * .55, length * .29, 3.3);
+      bolt(g, a * .3, length * .76, 3.1);
+      g.restore();
+    }
+    function moss(g, x, y, sx, sy, seed) {
+      const r = random(seed);
+      roughMass(g, x, y, sx, sy, r, '#365b49', 21);
+      for (let i = 0; i < 30; i++) {
+        const xx = x + (r() - .5) * sx * 1.8;
+        const yy = y + (r() - .5) * sy * 1.6;
+        brush(g, xx, yy, 1.5 + r() * 6, 1 + r() * 3.3, r() * 2,
+          ['#547758', '#759267', '#9ba977', '#395b4b', '#bdaf7a'][Math.floor(r() * 5)]);
+      }
+      for (let i = 0; i < 7; i++) {
+        const xx = x + (r() - .5) * sx * 1.5;
+        const yy = y + (r() - .5) * sy;
+        stroke(g, `M${xx.toFixed(1)} ${yy.toFixed(1)} q${(r() - .5) * 8} -9 ${(r() - .5) * 10} ${(-10 - r() * 14).toFixed(1)}`,
+          '#637e57', .9 + r());
+      }
+    }
+    function flower(g, x, y, seed) {
+      const r = random(seed);
+      const h = 16 + r() * 14;
+      stroke(g, `M${x} ${y} q${(r() - .5) * 8} ${-h * .5} ${2 + r() * 7} ${-h}`, '#426d50', 1.5);
+      const fx = x + 2 + r() * 7, fy = y - h;
+      for (let i = 0; i < 5; i++) {
+        const a = i * Math.PI * 2 / 5;
+        brush(g, fx + Math.cos(a) * 3.5, fy + Math.sin(a) * 3.5, 2.9, 2.1, a,
+          seed % 3 ? '#f2e7c6' : '#d7d8c2');
+      }
+      unevenCircle(g, fx, fy, 2.4, '#c2a261', '#9e8754', .6);
+    }
+    function vine(g, x, y, length, seed, t, wind) {
+      const r = random(seed);
+      const sway = Math.sin(t * (wind ? 2.7 : .8) + seed) * (wind ? 22 : 2.5);
+      const endX = x + (r() - .5) * 38 + sway;
+      const endY = y + length;
+      const d = `M${x} ${y} C${x - 14} ${y + length * .27} ${endX + 14} ${y + length * .64} ${endX} ${endY}`;
+      stroke(g, d, '#314f42', 3.2);
+      stroke(g, d, '#80916b', 1.05, .85);
+      for (let i = 1; i <= 5; i++) {
+        const k = i / 6;
+        const xx = mix(x, endX, k) + Math.sin(k * Math.PI * 2) * 7;
+        const yy = mix(y, endY, k);
+        brush(g, xx + (i % 2 ? -6 : 5), yy, 7 + r() * 3, 3, i % 2 ? -.5 : .65,
+          i % 2 ? '#66845e' : '#87a06d');
+      }
+    }
+
+    function riseAmount(t) {
+      const keys = [[0, 0], [9.2, 0], [10.25, .04], [10.68, .19], [11.18, .29],
+        [11.72, .29], [12.55, .51], [13.25, .72], [13.66, .73], [14.65, 1], [28, 1]];
+      for (let i = 1; i < keys.length; i++) {
+        if (t <= keys[i][0]) {
+          const k = clamp((t - keys[i - 1][0]) / (keys[i][0] - keys[i - 1][0]));
+          return Math.round(mix(keys[i - 1][1], keys[i][1], k) * 18) / 18;
+        }
+      }
+      return 1;
+    }
+    function robotLeg(g, side, p) {
+      const hip = { x: side * 95, y: 21 };
+      const knee = { x: side * mix(213, 119, p), y: mix(101, 205, p) };
+      const ankle = { x: side * mix(274, 146, p), y: mix(145, 320, p) };
+      joint(g, hip.x, hip.y, 29);
+      segment(g, hip.x, hip.y, knee.x, knee.y, 91, side < 0 ? 5001 : 5002);
+      joint(g, knee.x, knee.y, 32);
+      segment(g, knee.x, knee.y, ankle.x, ankle.y, 92, side < 0 ? 5031 : 5032, '#a9b3a7');
+      g.save(); g.translate(ankle.x, ankle.y); g.scale(side, 1);
+      armor(g, 'M-39 -14 L27 -16 L49 0 L88 18 L98 34 L64 40 L-61 38 L-71 23 Z',
+        '#aab3a6', 'M34 -12 L49 0 L88 18 L98 34 L64 40 L20 37 L25 5 Z',
+        'M-47 3 L6 -3 L31 4 L-46 9 Z', 5077 + side, [-70, -10, 160, 52], 29, 4);
+      stroke(g, 'M-46 23 L74 22 M45 21 L58 37 M2 22 L11 37', '#4a615f', 2.3);
+      bolt(g, -32, 21, 4);
+      g.restore();
+    }
+    function robotArm(g, side, p) {
+      const shoulder = { x: side * 205, y: -226 };
+      const elbow = { x: side * mix(263, 250, p), y: mix(-75, -94, p) };
+      const wrist = { x: side * mix(304, 244, p), y: mix(101, 73, p) };
+      joint(g, shoulder.x, shoulder.y, 32);
+      segment(g, shoulder.x, shoulder.y, elbow.x, elbow.y, 97, side < 0 ? 5201 : 5202);
+      joint(g, elbow.x, elbow.y, 30);
+      segment(g, elbow.x, elbow.y, wrist.x, wrist.y, 79, side < 0 ? 5251 : 5252, '#9faea5');
+      g.save(); g.translate(wrist.x, wrist.y); g.scale(side, 1);
+      const handDrop = mix(40, 31, p);
+      armor(g, `M-35 -3 L31 -8 L45 19 L40 ${handDrop} L17 ${handDrop + 13} L-32 ${handDrop + 10} L-48 21 Z`,
+        '#aeb8ac', `M16 -6 L31 -8 L45 19 L40 ${handDrop} L17 ${handDrop + 13} L13 16 Z`, null,
+        5290 + side, [-48, -5, 96, 66], 22, 3.6);
+      for (let i = 0; i < 3; i++) {
+        stroke(g, `M${-27 + i * 18} ${handDrop + 8} l${-2 + i} 9`, '#3d5553', 2.5);
+      }
+      g.restore();
+    }
+    function engineGlow(g, intensity) {
+      if (intensity <= 0) return;
+      g.save(); g.globalAlpha = intensity;
+      for (const side of [-1, 1]) {
+        const x = side * 167;
+        const light = g.createRadialGradient(x, 210, 2, x, 240, 225);
+        light.addColorStop(0, '#fff8d4c9'); light.addColorStop(.16, '#ffe4a5a2');
+        light.addColorStop(.58, '#f3ad6d42'); light.addColorStop(1, '#f4b57300');
+        g.fillStyle = light; g.fillRect(x - 200, 40, 400, 550);
+        shape(g, `M${x - 23} 75 L${x + 23} 75 L${x + 29} 192 L${x + 16} 339 L${x + 7} ${410 + intensity * 80} L${x - 10} 342 L${x - 26} 235 Z`, '#f7ac65a0');
+        shape(g, `M${x - 14} 82 L${x + 13} 82 L${x + 17} 200 L${x + 5} ${345 + intensity * 61} L${x - 12} 240 Z`, '#ffe39bd6');
+        shape(g, `M${x - 8} 87 L${x + 8} 87 L${x + 8} 204 L${x} ${297 + intensity * 39} L${x - 8} 203 Z`, '#fff9e6');
+      }
+      g.restore();
+    }
+    function robotPelvis(g) {
+      armor(g, 'M-123 -40 L-76 -16 L76 -16 L123 -37 L136 27 L101 72 L24 82 L-29 78 L-105 68 L-135 26 Z',
+        '#8fa29a', 'M28 -16 L76 -16 L123 -37 L136 27 L101 72 L25 82 Z',
+        'M-102 -28 L-71 -17 L-101 32 L-118 28 Z', 5391, [-135, -38, 270, 120], 55, 4.7);
+      armor(g, 'M-83 0 L-14 7 L-24 59 L-84 49 L-104 24 Z', '#c2c4b3',
+        'M-34 6 L-14 7 L-24 59 L-43 55 Z', null, 5392, [-105, 0, 95, 65], 17, 2.8);
+      armor(g, 'M15 7 L82 -1 L104 25 L84 49 L24 61 Z', '#b8bdaf',
+        'M63 2 L82 -1 L104 25 L84 49 L67 54 Z', null, 5393, [10, 0, 96, 66], 18, 2.8);
+      for (const x of [-101, 99]) {
+        shape(g, `M${x - 21} -24 L${x + 19} -20 L${x + 21} 20 L${x - 16} 22 Z`, '#445d5a', INK, 2.2);
+        stroke(g, `M${x - 11} -12 l17 2 M${x - 12} -2 l17 2 M${x - 11} 8 l17 2`, '#9dab97', 2);
+      }
+    }
+    function robotTorso(g, heart) {
+      armor(g, 'M-127 -300 Q-82 -318 -41 -305 L38 -304 Q105 -318 142 -284 L169 -235 L153 -130 L126 -26 Q79 9 25 16 L-44 15 Q-101 -1 -130 -32 L-156 -136 L-172 -233 Z',
+        BONE,
+        'M39 -301 Q105 -318 142 -284 L169 -235 L153 -130 L126 -26 Q79 9 25 16 L10 -17 L76 -65 L102 -178 L97 -274 Z',
+        'M-128 -284 L-67 -299 L-96 -266 L-142 -204 L-150 -231 Z',
+        5501, [-170, -304, 340, 322], 125, 5.2);
+      shape(g, 'M-150 -200 L-106 -226 L-90 -173 L-116 -84 L-143 -104 Z', '#465f5c', INK, 3);
+      shape(g, 'M147 -195 L105 -213 L89 -154 L119 -82 L145 -103 Z', '#445e5a', INK, 3);
+      armor(g, 'M-119 -259 L-42 -271 L-12 -224 L-43 -105 L-117 -123 L-136 -191 Z',
+        '#ced0bf', 'M-52 -270 L-42 -271 L-12 -224 L-43 -105 L-66 -112 L-47 -220 Z',
+        'M-113 -253 L-84 -258 L-110 -151 L-122 -172 Z', 5520, [-135, -270, 125, 173], 58, 3.3);
+      armor(g, 'M41 -270 L117 -250 L137 -186 L119 -120 L45 -105 L12 -224 Z',
+        '#c1c4b4', 'M83 -258 L117 -250 L137 -186 L119 -120 L78 -111 L100 -190 Z',
+        'M43 -266 L65 -261 L34 -175 L25 -200 Z', 5521, [10, -270, 130, 167], 53, 3.4);
+      shape(g, 'M-106 -108 L-38 -89 L-21 -27 L-63 -8 L-119 -39 Z', '#80958d', INK, 3.2);
+      shape(g, 'M105 -106 L38 -87 L23 -25 L68 -6 L117 -39 Z', '#718980', INK, 3.2);
+      shape(g, 'M-34 -79 L33 -78 L51 -19 L22 0 L-26 -2 L-51 -19 Z', '#a4afa2', INK, 2.8);
+      stroke(g, 'M-96 -225 L-54 -234 M-112 -184 L-64 -196 M64 -234 L108 -221 M68 -198 L113 -185', '#667c75', 2.2);
+      stroke(g, 'M-88 -66 L-49 -54 M54 -54 L90 -67 M-30 -39 L31 -38 M-21 -25 L23 -24', '#354c4a', 1.7);
+      for (const [x, y] of [[-112, -243], [-119, -143], [-55, -123], [108, -239], [116, -143], [57, -119], [-75, -41], [76, -40]]) bolt(g, x, y, 4.2);
+      // The light is a hard-edged cel shape; only its spill is soft.
+      shape(g, 'M-38 -195 L-2 -206 L40 -193 L53 -158 L40 -119 L1 -103 L-40 -120 L-54 -158 Z', '#455c59', INK, 4);
+      shape(g, 'M-25 -181 L2 -189 L28 -180 L38 -157 L27 -130 L0 -118 L-28 -130 L-39 -158 Z', '#1d373b', '#70817a', 2);
+      if (heart > 0) {
+        g.save(); g.globalAlpha = heart * .8;
+        const aura = g.createRadialGradient(0, -156, 7, 0, -156, 128);
+        aura.addColorStop(0, '#fff7c4c9'); aura.addColorStop(.2, '#ffd98292');
+        aura.addColorStop(.6, '#efbd7152'); aura.addColorStop(1, '#eebd6500');
+        g.fillStyle = aura; g.fillRect(-130, -285, 260, 260);
+        g.restore();
+      }
+      shape(g, 'M-15 -174 L4 -178 L20 -167 L23 -150 L10 -135 L-8 -135 L-22 -150 L-22 -166 Z',
+        heart > .08 ? '#dc9e5e' : '#676c5b', '#263d3d', 2.5);
+      if (heart > .08) {
+        g.save(); g.globalAlpha = heart;
+        shape(g, 'M-9 -167 L4 -170 L14 -161 L15 -150 L5 -141 L-9 -145 L-14 -153 Z', '#fff1ad');
+        shape(g, 'M-3 -164 L4 -165 L9 -159 L5 -151 L-2 -152 Z', '#fffdf0');
+        g.restore();
+      }
+      stroke(g, 'M-133 -71 Q-114 -82 -95 -75 M95 -75 Q115 -83 132 -72', '#bdad83', 2.1);
+      shape(g, 'M-73 -301 L-45 -304 L-17 -274 L-38 -267 L-64 -275 Z', '#a3755a', INK, 1.7);
+      shape(g, 'M112 -275 L142 -284 L152 -262 L126 -247 Z', '#96705a', INK, 1.6);
+    }
+    function robotShoulder(g, side) {
+      g.save(); g.scale(side, 1);
+      armor(g, 'M129 -275 Q178 -312 251 -293 L287 -268 L307 -206 L282 -148 L237 -126 L168 -150 L140 -197 Z',
+        side < 0 ? '#a8b5a8' : '#c3c7b7',
+        'M242 -294 L287 -268 L307 -206 L282 -148 L237 -126 L224 -164 L268 -225 Z',
+        'M144 -263 L187 -289 L215 -284 L172 -247 Z', side < 0 ? 5631 : 5632,
+        [128, -303, 182, 184], 73, 5);
+      shape(g, 'M186 -265 L235 -272 L259 -237 L254 -184 L231 -164 L197 -176 L181 -214 Z',
+        side < 0 ? '#aab4a6' : '#d0d0ba', INK, 2.5);
+      shape(g, 'M236 -269 L259 -237 L254 -184 L231 -164 L222 -177 L234 -233 Z', SHADE);
+      stroke(g, 'M184 -236 Q211 -245 239 -238 M190 -199 L226 -196 M272 -219 L294 -210', '#455c58', 2.1);
+      bolt(g, 176, -252, 4); bolt(g, 264, -173, 4.3);
+      if (side < 0) {
+        moss(g, 228, -293, 61, 13, 5811);
+        moss(g, 287, -215, 21, 35, 5821);
+      } else {
+        moss(g, 214, -290, 38, 9, 5831);
+        moss(g, 284, -186, 14, 24, 5841);
+      }
+      g.restore();
+    }
+    function robotHead(g, eye, ray) {
+      shape(g, 'M-86 -439 L-102 -421 L-114 -351 L-89 -339 L-72 -369 Z', '#7d928e', INK, 3.5);
+      shape(g, 'M84 -446 L105 -429 L116 -365 L91 -345 L73 -372 Z', '#879991', INK, 3.5);
+      shape(g, 'M-60 -347 L-40 -320 L37 -319 L64 -347 L55 -379 L-58 -379 Z', '#364e50', INK, 4);
+      armor(g, 'M-86 -448 L-65 -479 L-21 -492 L41 -486 L79 -461 L96 -421 L85 -359 L49 -324 L-49 -324 L-84 -363 L-96 -420 Z',
+        '#bdc4b4',
+        'M40 -486 L79 -461 L96 -421 L85 -359 L49 -324 L13 -324 L47 -373 L58 -428 L27 -468 Z',
+        'M-75 -453 L-51 -476 L-20 -484 L-49 -448 L-77 -415 Z', 6001,
+        [-98, -492, 196, 172], 65, 4.7);
+      shape(g, 'M-58 -487 L-35 -505 L-4 -506 L-15 -476 L-42 -464 Z', '#84978e', INK, 3);
+      shape(g, 'M37 -487 L59 -477 L81 -454 L64 -444 L36 -470 Z', '#84958b', INK, 3);
+      shape(g, 'M-78 -440 L-56 -452 L-16 -452 L-12 -421 L-62 -411 L-86 -422 Z', '#d7d5bd', INK, 2.4);
+      shape(g, 'M16 -454 L60 -452 L82 -432 L82 -416 L18 -421 Z', '#c8cbb8', INK, 2.4);
+      shape(g, 'M-77 -415 L-20 -424 L20 -423 L76 -413 L71 -380 L31 -370 L-36 -370 L-73 -383 Z', '#293f42', INK, 3.4);
+      stroke(g, 'M-67 -385 L-31 -378 M35 -376 L70 -385', '#769087', 1.1);
+      shape(g, 'M-38 -372 L-12 -378 L12 -377 L37 -369 L28 -341 L12 -329 L-16 -329 L-35 -347 Z', '#abb7ad', INK, 3);
+      shape(g, 'M-12 -377 L12 -377 L19 -348 L8 -337 L-7 -339 L-17 -348 Z', '#d1ccb2', INK, 2.2);
+      shape(g, 'M-66 -373 L-41 -366 L-34 -340 L-52 -343 L-70 -357 Z', '#84988f', INK, 2.1);
+      shape(g, 'M43 -365 L66 -373 L69 -355 L53 -343 L35 -340 Z', '#789087', INK, 2.1);
+      stroke(g, 'M-52 -348 L-33 -340 M33 -340 L53 -348 M-21 -333 L19 -333', '#526865', 1.3);
+      shape(g, 'M-14 -477 L14 -477 L24 -452 L15 -430 L-9 -428 L-22 -452 Z', '#8d9e93', INK, 2.5);
+      shape(g, 'M-3 -471 L11 -468 L15 -450 L7 -441 L-2 -444 Z', '#cfcbb0');
+      shape(g, 'M-83 -391 L-75 -401 L-68 -399 L-71 -386 L-82 -382 Z', '#a4775c');
+      stroke(g, 'M-73 -465 L-62 -459 L-58 -449 M59 -444 L68 -438 L63 -425 M-54 -362 L-46 -355 M60 -364 L52 -357', '#405652', 1.35);
+      stroke(g, 'M-68 -460 l8 3 M46 -474 l10 5 M-25 -486 l13 -2 M72 -416 l5 11', '#e4ddbd', 1.2);
+      for (const [x, y] of [[-79, -429], [77, -428], [-61, -354], [61, -355]]) bolt(g, x, y, 3.3);
+      if (ray > 0) {
+        g.save(); g.globalAlpha = ray;
+        shape(g, 'M25 -481 L66 -458 L78 -435 L45 -437 L34 -458 Z', '#f7dea085');
+        shape(g, 'M44 -365 L67 -376 L63 -352 L43 -338 L32 -339 Z', '#f4d49580');
+        stroke(g, 'M30 -467 L58 -449 M53 -354 L64 -361', '#fff0bc', 1.7);
+        g.restore();
+      }
+      if (eye > 0) {
+        g.save(); g.globalAlpha = eye * .9;
+        for (const x of [-42, 42]) {
+          const aura = g.createRadialGradient(x, -397, 1, x, -397, 48);
+          aura.addColorStop(0, '#ffe9a7d9'); aura.addColorStop(.35, '#edb9707b'); aura.addColorStop(1, '#ecb96a00');
+          g.fillStyle = aura; g.fillRect(x - 48, -445, 96, 96);
+        }
+        g.restore();
+      }
+      shape(g, 'M-62 -402 L-37 -407 L-20 -403 L-23 -391 L-43 -389 L-60 -394 Z',
+        eye > .08 ? '#f5c87c' : '#697c75', '#1c3437', 1.8);
+      shape(g, 'M22 -403 L39 -408 L63 -403 L61 -395 L43 -389 L24 -391 Z',
+        eye > .08 ? '#f5d18a' : '#697c75', '#1c3437', 1.8);
+      if (eye > .08) {
+        g.save(); g.globalAlpha = eye;
+        shape(g, 'M-52 -401 L-37 -404 L-28 -401 L-34 -395 L-49 -395 Z', '#fff6c8');
+        shape(g, 'M31 -401 L43 -404 L55 -401 L49 -395 L34 -394 Z', '#fff6c8');
+        g.restore();
+      }
+      moss(g, -75, -455, 13, 18, 6052);
+      stroke(g, 'M-72 -446 l-9 -18 M-74 -442 l-14 -10', '#789468', 1.2);
+    }
+    function shoulderSapling(g, t, wind) {
+      g.save(); g.translate(-220, -290);
+      const sway = wind ? Math.sin(t * 2.4) * 9 : Math.sin(t * .55) * 1.3;
+      stroke(g, `M0 4 C-6 -29 ${-18 + sway * .3} -67 ${-16 + sway} -119`, '#334d3d', 9);
+      stroke(g, `M-3 -9 C-8 -45 ${-16 + sway * .3} -79 ${-16 + sway} -119`, '#8d8c62', 2);
+      stroke(g, `M-13 -70 Q${-51 + sway} -88 ${-64 + sway} -99 M-12 -91 Q${18 + sway} -119 ${27 + sway} -137`, '#415841', 4);
+      foliage(g, -22 + sway, -125, 47, 31,
+        ['#405e49', '#587852', '#78905e', '#a1a971', '#c0bc80'], 6781, 75);
+      foliage(g, -62 + sway, -104, 26, 20,
+        ['#435f49', '#5c7953', '#79945d', '#9ca86e', '#b9bb7c'], 6789, 37);
+      foliage(g, 25 + sway, -139, 29, 19,
+        ['#46604c', '#62805b', '#799465', '#adad77', '#c7c082'], 6797, 41);
+      g.restore();
+    }
+    function robot(g, p, t, flying = false) {
+      const wind = t > 16 && t < 23;
+      const eye = flying ? 1 : clamp((t - 5.76) * 2.25);
+      let heart = 0;
+      if (flying || t > 9.5) heart = .82;
+      else if (t > 6.45) {
+        const beat = Math.floor((t - 6.45) * 8);
+        heart = [0, .28, .64, .18, .05, .49, .85, .35, .8, .95, .7, .85, .9, .85, .8, .9][Math.min(15, beat)];
+      }
+      engineGlow(g, flying ? 1 : clamp((t - 16.15) / 1.15));
+      shape(g, 'M-167 -231 L-194 -218 L-185 -105 L-154 -85 L-139 -133 Z', '#435a56', INK, 3);
+      shape(g, 'M165 -231 L195 -214 L186 -104 L154 -89 L141 -134 Z', '#425a56', INK, 3);
+      robotLeg(g, -1, p); robotLeg(g, 1, p);
+      robotPelvis(g);
+      robotArm(g, -1, p); robotArm(g, 1, p);
+      robotTorso(g, heart);
+      robotShoulder(g, -1); robotShoulder(g, 1);
+      shape(g, 'M-56 -311 L-43 -340 L42 -340 L57 -310 L41 -293 L-39 -293 Z', '#40585a', INK, 3);
+      for (const x of [-30, -10, 11, 31]) stroke(g, `M${x} -331 l0 25`, '#93a39a', 3);
+      // The head waits until the body has almost stood, then finds the sun.
+      const headLift = clamp((p - .67) / .33);
+      g.save(); g.translate(0, -330); g.rotate(mix(-.075, .105, headLift)); g.translate(0, 330);
+      robotHead(g, eye, clamp((t - 2.05) / 1.15));
+      g.restore();
+      moss(g, -143, -165, 16, 39, 6841);
+      moss(g, -63, -303, 24, 8, 6842);
+      moss(g, 134, -95, 17, 24, 6843);
+      moss(g, -42, 17, 31, 10, 6844);
+      shoulderSapling(g, t, wind);
+      for (let i = 0; i < 7; i++) flower(g, -270 + i * 15, -297 + (i % 3) * 2, 700 + i);
+      flower(g, 178, -290, 716); flower(g, 193, -291, 717);
+      vine(g, -280, -207, 137, 7301, t, wind);
+      vine(g, -166, -154, 180, 7302, t, wind);
+      vine(g, 274, -184, 112, 7303, t, wind);
+      vine(g, 138, -53, 125, 7304, t, wind);
+      stroke(g, 'M-194 -289 C-185 -260 -157 -245 -142 -230 M-204 -290 C-231 -273 -242 -247 -252 -227', '#315346', 3.5);
+    }
+
+    function bird(g, x, y, scale, wing, perch = false) {
+      g.save(); g.translate(x, y); g.scale(scale, scale);
+      if (!perch) g.rotate(-.12);
+      shape(g, 'M-17 1 Q-4 -12 12 -3 L21 4 L9 13 L-7 12 Z', '#6a6250', '#354340', 1.3);
+      shape(g, 'M8 7 L28 13 L19 15 L13 12 Z', '#4c5148');
+      shape(g, 'M-13 3 Q-23 -6 -16 -16 Q-8 -22 -1 -13 L-3 1 Z', '#796b53', '#354340', 1.1);
+      shape(g, 'M-19 -11 L-28 -9 L-18 -5 Z', '#b79b64');
+      unevenCircle(g, -13, -13, 1.65, '#222f30', null, 0);
+      if (perch) {
+        shape(g, 'M-3 0 Q3 -12 16 -8 L18 3 L5 7 Z', '#4b5a50', '#34423e', 1);
+        stroke(g, 'M0 11 L-2 21 L-7 23 M8 11 L8 21 L3 23', '#3b4239', 1.2);
+      } else {
+        const lift = Math.sin(wing * Math.PI * 2);
+        shape(g, `M-3 0 Q${-4 + lift * 12} ${-18 - lift * 15} ${15 + lift * 9} ${-23 - lift * 15} Q${9 + lift * 5} ${-5 - lift * 3} 5 5 Z`, '#45564b', '#34443f', 1.1);
+        shape(g, `M4 3 Q${18 - lift * 6} ${14 + lift * 10} ${25 - lift * 5} ${18 + lift * 12} L15 9 Z`, '#4d5d50');
+      }
+      g.restore();
+    }
+    function birdsInForest(g, t, rootY) {
+      if (t < 2.2) {
+        const q = ease(clamp((t - .55) / 1.65));
+        const bx = mix(1250, 1014, q) + Math.sin(q * Math.PI) * 30;
+        const by = mix(287, rootY - 290, q) - Math.sin(q * Math.PI) * 84;
+        bird(g, bx, by, 1.05, t * 5.7);
+      } else if (t < 8.72) {
+        bird(g, 1014, rootY - 290, 1.05, 0, true);
+      } else if (t < 10.4) {
+        const q = (t - 8.72) / 1.68;
+        bird(g, 1014 + q * 311, rootY - 303 - q * 282, 1.05 - q * .24, t * 8.1);
+      }
+      if (t < 8.8 || t > 14) return;
+      const r = random(921);
+      for (let i = 0; i < 23; i++) {
+        const release = 8.82 + i * .045 + r() * .16;
+        const age = t - release;
+        const fromRight = i % 3 !== 0;
+        const startX = fromRight ? 1235 + r() * 280 : 150 + r() * 315;
+        const startY = 330 + r() * 175;
+        const direction = fromRight ? -.55 : .72;
+        if (age < 0) continue;
+        const bx = startX + (direction + (r() - .5) * .5) * age * 96;
+        const by = startY - age * (70 + r() * 39) - Math.sin(age * 7 + i) * 7;
+        if (by < -35) continue;
+        g.save(); g.globalAlpha = clamp((14 - t) / 1.6) * .88;
+        bird(g, bx, by, .29 + r() * .34, t * (4 + r() * 4));
+        g.restore();
+      }
+    }
+    function leaf(g, x, y, s, angle, color) {
+      g.save(); g.translate(x, y); g.rotate(angle); g.scale(s, s);
+      shape(g, 'M0 -8 Q8 -5 7 2 L1 9 Q-7 5 -6 -2 Z', color, '#4e614c', .65);
+      stroke(g, 'M0 -8 Q0 0 1 8', '#cfb57d9c', .65);
+      g.restore();
+    }
+    function fallingMatter(g, t, sky = false) {
+      const start = sky ? 19.1 : 10.05;
+      const r = random(sky ? 12519 : 12512);
+      for (let i = 0; i < (sky ? 138 : 118); i++) {
+        const launch = start + i * (sky ? .035 : .075) + r() * .8;
+        const age = t - launch;
+        const sx = sky ? 540 + r() * 680 : 800 + (r() - .5) * 590;
+        const sy = sky ? 480 + r() * 385 : 360 + r() * 295;
+        const drift = sky ? -58 : 16;
+        const x = sx + age * drift + Math.sin(age * 3 + i * 1.8) * (9 + r() * 23);
+        const y = sy + age * (sky ? 14 : 54) + age * age * (sky ? 11 : 13);
+        const sc = .42 + r() * (sky ? 1.9 : 1.25);
+        const color = ['#91a075', '#c5a66b', '#6e886b', '#b87558', '#d4b56e'][Math.floor(r() * 5)];
+        if (age < 0 || x < -30 || x > W + 30 || y > 900) continue;
+        g.save(); g.globalAlpha = clamp(age * 2.6) * clamp((900 - y) / 130);
+        if (i % 5 === 0 && !sky) {
+          brush(g, x, y, 2 + sc * 2, 1 + sc, age * 3 + i, '#685b45');
+        } else {
+          leaf(g, x, y, sc, age * (1.3 + i % 3) + i, color);
+        }
+        g.restore();
+      }
+    }
+    function fallingVines(g, t) {
+      if (t < 10.45 || t > 17.4) return;
+      const anchors = [[-261, -225], [-181, -147], [256, -186], [142, -86],
+        [-237, -197], [216, -244], [-133, -49], [100, -18]];
+      for (let i = 0; i < anchors.length; i++) {
+        const release = 10.45 + i * .36;
+        const age = t - release;
+        if (age < 0) continue;
+        const x = 800 + anchors[i][0] + age * (i % 2 ? 14 : -21);
+        const y = mix(675, 500, riseAmount(release)) + anchors[i][1] + age * 36 + age * age * 17;
+        if (y > 950) continue;
+        g.save(); g.globalAlpha = clamp(age * 3) * clamp((950 - y) / 120);
+        g.translate(x, y); g.rotate((i % 2 ? 1 : -1) * age * .48);
+        stroke(g, 'M0 0 C-13 20 13 50 5 91 Q-2 108 -16 117', '#304e40', 3.5);
+        stroke(g, 'M-1 2 C-11 28 11 53 4 91', '#9aa77b', 1.1);
+        for (let j = 0; j < 5; j++) {
+          brush(g, j % 2 ? 11 : -8, 19 + j * 18, 8, 3, j % 2 ? .65 : -.5,
+            j % 2 ? '#70895f' : '#8d9d6c');
+        }
+        g.restore();
+      }
+    }
+    function sunbeams(g, t) {
+      const arrive = .35 + clamp((t - 1.8) / 1.7) * .65;
+      g.save(); g.globalAlpha = arrive;
+      const light = g.createLinearGradient(1178, 120, 880, 900);
+      light.addColorStop(0, '#fff2c882'); light.addColorStop(.48, '#ffdfaa1c'); light.addColorStop(1, '#ffe9b800');
+      shape(g, 'M1092 68 L1212 66 L1502 900 L817 900 Z', light);
+      shape(g, 'M1172 93 L1225 95 L1377 900 L1035 900 Z', '#fff0c41b');
+      shape(g, 'M1058 98 L1092 91 L887 900 L657 900 Z', '#ffe7b81d');
+      const gold = g.createRadialGradient(1130, 165, 4, 1130, 165, 340);
+      gold.addColorStop(0, '#fff9d16b'); gold.addColorStop(1, '#ffe4b400');
+      g.fillStyle = gold; g.fillRect(760, 0, 750, 650);
+      g.restore();
+    }
+    function forestHaze(g, t) {
+      const r = random(113);
+      g.save(); g.globalAlpha = .53;
+      for (let i = 0; i < 47; i++) {
+        const x = r() * W;
+        const y = 500 + r() * 250;
+        brush(g, x + Math.sin(t * .29 + i) * 5, y, 32 + r() * 110, 6 + r() * 13, -.15 + r() * .3,
+          i % 3 ? '#f5efdb26' : '#e0edda20');
+      }
+      g.restore();
+    }
+    function groundShadow(g, p) {
+      const r = random(642);
+      g.save(); g.globalAlpha = 1 - p * .16;
+      roughMass(g, 808, 823, mix(340, 258, p), 52, r, '#263e3d66', 34);
+      roughMass(g, 803, 828, mix(235, 199, p), 32, r, '#253b3b58', 31);
+      g.restore();
+    }
+    function windRing(g, t) {
+      const q = clamp((t - 16.3) / 2.65);
+      if (q <= 0 || q >= 1) return;
+      const r = mix(48, 990, ease(q));
+      g.save(); g.globalAlpha = (1 - q) * .72;
+      g.translate(800, 790);
+      for (let j = 0; j < 4; j++) {
+        const rr = r * (1 + j * .048);
+        for (let part = 0; part < 14; part++) {
+          if ((part * 7 + j * 3) % 11 < 3) continue;
+          g.beginPath();
+          for (let k = 0; k <= 9; k++) {
+            const a = (part + k / 9) / 14 * Math.PI * 2;
+            const irregular = 1 + Math.sin(a * 9 + j * 2.1) * .014 + Math.sin(a * 17 + j) * .008;
+            const xx = Math.cos(a) * rr * irregular;
+            const yy = Math.sin(a) * rr * .23 * irregular + Math.sin(a * 11 + j) * 2.5;
+            if (k === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy);
+          }
+          g.strokeStyle = j % 2 ? '#fff1c9' : '#d9e7ce';
+          g.lineWidth = 3.7 + (part % 3) * 1.25 - j * .58;
+          g.lineCap = 'round'; g.stroke();
+        }
+      }
+      g.restore();
+      const rr = random(3318);
+      g.save(); g.globalAlpha = .58 * Math.sin(q * Math.PI);
+      for (let i = 0; i < 37; i++) {
+        const x = rr() * 1600, y = 440 + rr() * 380;
+        const dir = x < 800 ? -1 : 1;
+        stroke(g, `M${x.toFixed(1)} ${y.toFixed(1)} q${dir * (48 + rr() * 125)} ${-18 - rr() * 19} ${dir * (132 + rr() * 186)} ${-9 - rr() * 34}`,
+          rr() > .5 ? '#f5ead09e' : '#dce4d29a', .8 + rr() * 2.7);
+      }
+      g.restore();
+    }
+    function tremblingGrass(g, t) {
+      if (t < 8.85) return;
+      const power = t < 10 ? .5 : t < 16 ? .27 : t < 19.4 ? 1 : .08;
+      const r = random(333);
+      for (let i = 0; i < 108; i++) {
+        const x = r() * W;
+        const y = 725 + r() * 175;
+        const ht = 10 + r() * 42;
+        const side = x < 800 ? -1 : 1;
+        const bend = Math.sin(t * 5 + i) * 3 + side * power * (14 + r() * 20);
+        stroke(g, `M${x.toFixed(1)} ${y.toFixed(1)} Q${(x + bend * .18).toFixed(1)} ${(y - ht * .6).toFixed(1)} ${(x + bend).toFixed(1)} ${(y - ht).toFixed(1)}`,
+          i % 3 ? '#bdc598b2' : '#3e604da3', .8 + r() * 1.35);
+      }
+    }
+    function shotCamera(g, t) {
+      let zoom = 1, cx = 800, cy = 450;
+      if (t < 5.72) { zoom = 1 + t * .009; cy = 450 - t * 1.2; }
+      else if (t < 8.61) { zoom = 1.67 + (t - 5.72) * .017; cx = 810; cy = 410; }
+      else if (t < 15.7) { zoom = mix(.96, .89, ease((t - 10.5) / 4.2)); cy = 430; }
+      else { zoom = .89; cy = 430; }
+      const shake = t > 8.82 && t < 10.3 ? (1 - (t - 8.82) / 1.48) * 3.1 :
+        t > 16.3 && t < 18.4 ? 1.2 : 0;
+      const exposure = Math.floor(t * 16);
+      g.translate(Math.sin(exposure * 2.8) * shake, Math.cos(exposure * 4.1) * shake);
+      g.translate(800, 450); g.scale(zoom, zoom); g.translate(-cx, -cy);
+    }
+    function forestFrame(g, t) {
+      g.save(); shotCamera(g, t);
+      g.drawImage(forest, 0, 0);
+      sunbeams(g, t);
+      forestHaze(g, t);
+      const p = riseAmount(t);
+      const rootY = mix(675, 500, p);
+      groundShadow(g, p);
+      tremblingGrass(g, t);
+      g.save(); g.translate(800, rootY); robot(g, p, t); g.restore();
+      birdsInForest(g, t, rootY);
+      fallingMatter(g, t);
+      fallingVines(g, t);
+      windRing(g, t);
+      g.drawImage(foreground, 0, 0);
+      g.restore();
+    }
+
+    function curvedTrail(g, x, y, progress) {
+      if (progress <= 0) return;
+      g.save();
+      const p0 = [610, 983], p1 = [650, 763], p2 = [797, 562], p3 = [x - 12, y + 106];
+      const trail = new Path2D();
+      trail.moveTo(...p0);
+      trail.bezierCurveTo(...p1, ...p2, ...p3);
+      const alpha = clamp((progress - .01) * 5) * (1 - progress * .25);
+      g.globalAlpha = alpha;
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.strokeStyle = '#f5d39933'; g.lineWidth = 142; g.stroke(trail);
+      g.strokeStyle = '#ffe3a07a'; g.lineWidth = 53; g.stroke(trail);
+      g.strokeStyle = '#fff3c8ca'; g.lineWidth = 13; g.stroke(trail);
+      g.strokeStyle = '#ffffffb4'; g.lineWidth = 3.2; g.stroke(trail);
+      const r = random(2026);
+      for (let i = 0; i < 115; i++) {
+        const k = r();
+        const m = 1 - k;
+        const cx = m * m * m * p0[0] + 3 * m * m * k * p1[0] + 3 * m * k * k * p2[0] + k * k * k * p3[0];
+        const cy = m * m * m * p0[1] + 3 * m * m * k * p1[1] + 3 * m * k * k * p2[1] + k * k * k * p3[1];
+        const dx = 3 * m * m * (p1[0] - p0[0]) + 6 * m * k * (p2[0] - p1[0]) + 3 * k * k * (p3[0] - p2[0]);
+        const dy = 3 * m * m * (p1[1] - p0[1]) + 6 * m * k * (p2[1] - p1[1]) + 3 * k * k * (p3[1] - p2[1]);
+        const length = Math.hypot(dx, dy) || 1;
+        const distance = (r() - .5) * 107;
+        brush(g, cx - dy / length * distance, cy + dx / length * distance,
+          4 + r() * 34, 1.5 + r() * 8, Math.atan2(dy, dx) + (r() - .5) * .5,
+          i % 4 ? '#fff0c345' : '#d1e5d569');
+      }
+      g.restore();
+    }
+    function skyFrame(g, t) {
+      const u = clamp((t - 19.15) / 5.95);
+      // A fast launch followed by a long held, distant silhouette.
+      const flight = 1 - Math.pow(1 - clamp((t - 19.15) / 3.7), 2.45);
+      const x = mix(803, 1290, flight);
+      const y = mix(520, 239, flight) - Math.sin(u * Math.PI) * 65;
+      const scale = mix(.9, .2, flight);
+      g.save();
+      if (canvas.width / canvas.height < .9) g.translate(-(x - 803) * .8, 0);
+      g.drawImage(skyScene, 0, 0);
+      const rays = g.createRadialGradient(1060, 246, 5, 1060, 246, 510);
+      rays.addColorStop(0, '#fff9df52'); rays.addColorStop(1, '#fff9df00');
+      g.fillStyle = rays; g.fillRect(520, 0, 1080, 770);
+      curvedTrail(g, x, y, u);
+      g.save(); g.translate(x, y); g.rotate(flight * .38); g.scale(scale, scale);
+      robot(g, 1, t, true);
+      g.restore();
+      fallingMatter(g, t, true);
+      const r = random(7059);
+      for (let i = 0; i < 41; i++) {
+        const sx = r() * W, sy = r() * H;
+        const age = t - 19.2;
+        const px = sx - age * (12 + r() * 14);
+        const py = sy + age * (5 + r() * 9);
+        brush(g, px, py, 15 + r() * 61, 1.5 + r() * 6, -.38,
+          i % 2 ? '#fff2d33a' : '#ebefdf35');
+      }
+      g.restore();
+    }
+    function makeGrain() {
+      const tile = document.createElement('canvas');
+      tile.width = 128; tile.height = 128;
+      const g = tile.getContext('2d');
+      const img = g.createImageData(128, 128);
+      const r = random(4431);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const value = r() > .5 ? 255 : 32;
+        img.data[i] = value; img.data[i + 1] = value;
+        img.data[i + 2] = value; img.data[i + 3] = Math.floor(r() * 27);
+      }
+      g.putImageData(img, 0, 0);
+      return tile;
+    }
+    const grain = makeGrain();
+    const grainPattern = ctx.createPattern(grain, 'repeat');
+    const vignette = ctx.createRadialGradient(800, 410, 270, 800, 450, 980);
+    vignette.addColorStop(0, '#0b181900');
+    vignette.addColorStop(.67, '#0b181900');
+    vignette.addColorStop(1, '#14252566');
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2,
+        2400 / Math.max(1, innerWidth), 1350 / Math.max(1, innerHeight));
+      canvas.width = Math.round(innerWidth * dpr);
+      canvas.height = Math.round(innerHeight * dpr);
+      size.scale = Math.max(canvas.width / W, canvas.height / H);
+      size.x = (canvas.width - W * size.scale) / 2;
+      size.y = (canvas.height - H * size.scale) / 2;
+      render(elapsed);
+    }
+    function render(t) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#101719'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(size.scale, 0, 0, size.scale, size.x, size.y);
+      if (t < 19.15) forestFrame(ctx, t);
+      else skyFrame(ctx, t);
+      const flash = Math.max(
+        clamp(1 - Math.abs(t - 16.34) / .15) * .13,
+        clamp(1 - Math.abs(t - 19.17) / .24) * .32
+      );
+      if (flash) {
+        ctx.fillStyle = `rgba(255, 248, 219, ${flash})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+      ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H);
+      ctx.save(); ctx.globalAlpha = .27;
+      ctx.fillStyle = grainPattern; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      // The final breath of the shot is held in the sky before the loop goes dark.
+      if (t > 26.3) {
+        ctx.fillStyle = `rgba(13, 23, 25, ${ease((t - 26.3) / 1.7)})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    // Web Audio is intentionally optional: browsers only permit it after a gesture.
+    class Soundscape {
+      constructor() { this.context = null; this.master = null; this.enabled = false; this.fired = new Set(); }
+      start() {
+        if (!this.context) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return false;
+          this.context = new AudioContext();
+          this.master = this.context.createGain();
+          this.master.gain.value = .35;
+          this.master.connect(this.context.destination);
+          this.ambient();
+        }
+        this.context.resume();
+        this.master.gain.setTargetAtTime(.35, this.context.currentTime, .12);
+        this.enabled = true;
+        this.fired.clear();
+        return true;
+      }
+      stop() {
+        if (this.context) this.master.gain.setTargetAtTime(0, this.context.currentTime, .1);
+        this.enabled = false;
+      }
+      ambient() {
+        const c = this.context;
+        const buffer = c.createBuffer(1, c.sampleRate * 3, c.sampleRate);
+        const data = buffer.getChannelData(0);
+        const r = random(8934);
+        for (let i = 0; i < data.length; i++) data[i] = (r() * 2 - 1) * .18;
+        const source = c.createBufferSource(); source.buffer = buffer; source.loop = true;
+        const filter = c.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 420;
+        const gain = c.createGain(); gain.gain.value = .17;
+        source.connect(filter); filter.connect(gain); gain.connect(this.master);
+        source.start();
+      }
+      tone(from, to, duration, volume, type = 'sine', delay = 0) {
+        const c = this.context, now = c.currentTime + delay;
+        const o = c.createOscillator(), gain = c.createGain();
+        o.type = type;
+        o.frequency.setValueAtTime(from, now);
+        o.frequency.exponentialRampToValueAtTime(Math.max(20, to), now + duration);
+        gain.gain.setValueAtTime(.0001, now);
+        gain.gain.exponentialRampToValueAtTime(volume, now + Math.min(.11, duration * .18));
+        gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+        o.connect(gain); gain.connect(this.master);
+        o.start(now); o.stop(now + duration + .03);
+      }
+      noise(duration, volume, frequency, delay = 0) {
+        const c = this.context, now = c.currentTime + delay;
+        const buffer = c.createBuffer(1, Math.ceil(c.sampleRate * duration), c.sampleRate);
+        const data = buffer.getChannelData(0);
+        const r = random(Math.floor(now * 10000));
+        for (let i = 0; i < data.length; i++) data[i] = r() * 2 - 1;
+        const source = c.createBufferSource(); source.buffer = buffer;
+        const filter = c.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = frequency;
+        const gain = c.createGain(); gain.gain.setValueAtTime(.0001, now);
+        gain.gain.linearRampToValueAtTime(volume, now + duration * .24);
+        gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+        source.connect(filter); filter.connect(gain); gain.connect(this.master);
+        source.start(now); source.stop(now + duration + .03);
+      }
+      event(name) {
+        if (!this.enabled || this.fired.has(name)) return;
+        this.fired.add(name);
+        if (name === 'bird') {
+          for (let i = 0; i < 3; i++) this.tone(780 + i * 130, 1330 + i * 120, .16, .12, 'sine', i * .14);
+        } else if (name === 'heart') {
+          this.tone(75, 45, .8, .19, 'sine');
+          this.tone(310, 430, 1.5, .075, 'sine', .16);
+        } else if (name === 'birds') {
+          for (let i = 0; i < 11; i++) this.tone(710 + i * 47, 1250 + i * 19, .14, .045, 'sine', i * .07);
+          this.noise(1.9, .22, 1150);
+        } else if (name === 'rise') {
+          this.tone(77, 33, 5.5, .32, 'sawtooth');
+          this.tone(135, 52, 4.8, .11, 'triangle', .4);
+          this.noise(4.8, .23, 360);
+        } else if (name === 'engine') {
+          this.tone(46, 174, 3.1, .27, 'sawtooth');
+          this.noise(3.1, .33, 630);
+        } else if (name === 'launch') {
+          this.tone(85, 410, 2.8, .4, 'sawtooth');
+          this.noise(4.2, .47, 2000);
+          this.tone(280, 115, 5.2, .12, 'sine', .2);
+        }
+      }
+    }
+    const sound = new Soundscape();
+    const cues = [[1.72, 'bird'], [6.54, 'heart'], [8.9, 'birds'], [10.1, 'rise'], [16.3, 'engine'], [19.18, 'launch']];
+    function cueSounds(before, after) {
+      if (after < before) sound.fired.clear();
+      for (const [at, name] of cues) {
+        if ((after < before ? at > before || at <= after : at > before && at <= after)) sound.event(name);
+      }
+    }
+    function updateControls() {
+      scrub.value = elapsed.toFixed(2);
+      scrub.style.setProperty('--progress', `${elapsed / DURATION * 100}%`);
+      timeLabel.textContent = `0:${String(Math.floor(elapsed)).padStart(2, '0')}`;
+      openingTitle.classList.toggle('visible', elapsed > .7 && elapsed < 3.45);
+    }
+    function seek(value) {
+      elapsed = clamp(Number(value), 0, DURATION - .01);
+      sound.fired.clear();
+      updateControls(); render(elapsed);
+    }
+    playButton.addEventListener('click', () => {
+      paused = !paused;
+      playButton.textContent = paused ? 'PLAY' : 'PAUSE';
+      playButton.setAttribute('aria-label', paused ? 'Play film' : 'Pause film');
+    });
+    soundButton.addEventListener('click', () => {
+      if (sound.enabled) sound.stop(); else sound.start();
+      soundButton.textContent = sound.enabled ? 'SOUND ON' : 'SOUND OFF';
+      soundButton.setAttribute('aria-label', sound.enabled ? 'Turn off sound' : 'Turn on sound');
+    });
+    replayButton.addEventListener('click', () => {
+      seek(0); paused = false; playButton.textContent = 'PAUSE';
+      playButton.setAttribute('aria-label', 'Pause film');
+    });
+    scrub.addEventListener('input', e => seek(e.target.value));
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' && e.target !== scrub && e.target.tagName !== 'BUTTON') {
+        e.preventDefault(); playButton.click();
+      }
+    });
+    window.addEventListener('resize', resize, { passive: true });
+    function animate(now) {
+      const dt = Math.min((now - lastFrame) / 1000, .08);
+      lastFrame = now;
+      if (!paused) {
+        const before = elapsed;
+        elapsed = (elapsed + dt) % DURATION;
+        cueSounds(before, elapsed);
+      }
+      if (!paused && now - lastPaint > 1000 / 24) {
+        render(elapsed); updateControls(); lastPaint = now;
+      }
+      requestAnimationFrame(animate);
+    }
+    if (paused) { playButton.textContent = 'PLAY'; playButton.setAttribute('aria-label', 'Play film'); }
+    resize(); updateControls(); requestAnimationFrame(animate);
+  })();
+  </script>
+</body>
+</html>

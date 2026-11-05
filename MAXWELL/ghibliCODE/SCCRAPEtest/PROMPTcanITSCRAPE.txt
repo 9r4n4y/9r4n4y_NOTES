@@ -1,0 +1,27 @@
+I've attached a saved HTML page of a website with a big data table.
+https://github.com/9r4n4y/Webpages/blob/main/LLM_Leaderboard_-_Comparison_of_AI_models_from_OpenAI__Anthropic__Google__SpaceXAI___others___Artificial_Analysis__5_11_2026_11_27_13_am_.HTML
+Read the HTML and work out how the table is built. Then write a Tampermonkey userscript (.user.js) for this site that adds a red "Export Markdown" button. Clicking it should copy the full table to my clipboard as Markdown and also download it as a .md file.
+
+The Markdown has to look good in any Markdown viewer. The table is very wide, so don't output it as one giant table. Split it into several smaller, separate tables that are easy to read, and make sure I can still tell which row belongs to which model across all of them.
+
+The button must keep working on this site, and it must export every row and every column correctly.
+
+Test the script against the attached HTML before giving it to me, and show me the results.
+ and just make a simple button no other intex.html that i tap and get script copy  I've attached a saved HTML page of a website with a big data table.
+
+Read the HTML and work out how the table is built, including the header rows, the columns, and any cells that aren't plain text. Then write a complete Tampermonkey userscript (.user.js) for this site. It adds a red "Export Markdown" button. Clicking it copies the full table to my clipboard as Markdown and also downloads a .md file.
+
+The table is very wide, so don't output one giant table. Split it into several separate tables that read well in any Markdown viewer. What I need from the result:
+
+- I can always tell which row belongs to which model across all the tables. Some models share the same name, so a name alone isn't enough.
+- Column titles are readable and complete, with units where they apply. Long benchmark descriptions are explained once in a separate section and not repeated in every header.
+- The most useful columns (model, creator, overall score, price, speed) are together in the first table, and the rest are grouped sensibly.
+- The links in the table stay as clickable links.
+- The file starts with a short summary (source, export date in an unambiguous format, number of models and columns) and a contents list.
+- Missing values and negative numbers look consistent everywhere.
+
+The button must keep working on the live site, which re-renders itself, and I want a backup way to trigger the export if the button isn't visible.
+
+Test the script against the attached HTML before giving it to me. Show that every table has all the rows and a consistent number of columns, and that no data was lost compared with the original table.
+
+Give me the complete script in one code block.

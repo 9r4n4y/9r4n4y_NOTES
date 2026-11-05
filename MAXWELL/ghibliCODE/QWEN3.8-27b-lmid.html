@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TERRA·ORBIT — Planetary Survey Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan:#57d9ff;
+    --cyan-dim:rgba(87,217,255,.55);
+    --ink:#e6f1fc;
+    --dim:rgba(165,190,215,.62);
+    --panel:rgba(8,11,17,.72);
+    --line:rgba(130,190,255,.15);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#000;color:var(--ink);
+    font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  #scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  .vig{position:fixed;inset:0;pointer-events:none;z-index:2;
+    background:radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(0,0,0,.62) 100%)}
+  .hud{position:fixed;z-index:5;pointer-events:none;user-select:none}
+  /* ---- title ---- */
+  #hudTitle{top:22px;left:26px}
+  .logo{display:flex;align-items:center;gap:11px}
+  .logo .dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);
+    box-shadow:0 0 14px var(--cyan),0 0 4px #fff inset;animation:pulse 2.4s ease-in-out infinite}
+  h1{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;letter-spacing:.42em;color:#fff;
+    text-shadow:0 0 26px rgba(87,217,255,.45)}
+  .sub{margin-top:6px;font-size:9px;letter-spacing:.34em;color:var(--dim);text-transform:uppercase}
+  /* ---- stats top right ---- */
+  #hudStats{top:24px;right:26px;text-align:right;font-size:10px;letter-spacing:.2em;color:var(--dim);
+    line-height:2.05;text-transform:uppercase}
+  #hudStats b{color:#cfeaff;font-weight:600}
+  .live{color:#7cffcb}.blink{animation:blink 1.7s ease-in-out infinite;display:inline-block}
+  /* ---- legend ---- */
+  #legend{left:26px;bottom:24px;display:flex;flex-direction:column;gap:8px;
+    font-size:9.5px;letter-spacing:.24em;color:var(--dim);text-transform:uppercase}
+  #legend .row{display:flex;align-items:center;gap:9px}
+  .sw{width:11px;height:11px;border-radius:3px;flex:none;border:1px solid rgba(255,255,255,.18)}
+  .sw.ocean{background:#000}
+  .sw.land{background:#1a1d23}
+  .sw.border{background:#fff;box-shadow:0 0 8px rgba(255,255,255,.8)}
+  .sw.sat{background:var(--cyan);box-shadow:0 0 10px var(--cyan);border:none;border-radius:50%}
+  /* ---- coords bottom right ---- */
+  #coords{right:26px;bottom:24px;text-align:right;font-size:10px;letter-spacing:.22em;color:var(--dim);
+    font-variant-numeric:tabular-nums;line-height:1.9;text-transform:uppercase}
+  #coords b{color:#bcd8ef;font-weight:500}
+  /* ---- tooltip ---- */
+  #tooltip{position:fixed;z-index:8;pointer-events:none;transform:translate(-50%,-135%);
+    background:rgba(6,10,16,.86);border:1px solid var(--line);padding:6px 12px;border-radius:9px;
+    font-size:11px;letter-spacing:.1em;color:#eaf6ff;white-space:nowrap;opacity:0;
+    transition:opacity .15s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    box-shadow:0 8px 30px rgba(0,0,0,.6)}
+  #tooltip.on{opacity:1}
+  /* ---- info card ---- */
+  #card{position:fixed;z-index:10;left:50%;bottom:20px;width:min(442px,calc(100vw - 28px));
+    transform:translate(-50%,140%);background:var(--panel);border:1px solid var(--line);
+    border-radius:18px;overflow:hidden;pointer-events:auto;
+    -webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);
+    box-shadow:0 24px 80px rgba(0,0,0,.75),inset 0 0 60px rgba(50,140,255,.04);
+    transition:transform .65s cubic-bezier(.16,1,.3,1);max-height:70vh}
+  #card.open{transform:translate(-50%,0)}
+  .card-top{height:2px;background:linear-gradient(90deg,transparent,rgba(87,217,255,.75),transparent)}
+  .card-body{opacity:0;transform:translateY(12px);transition:opacity .4s .12s,transform .5s .12s cubic-bezier(.16,1,.3,1);
+    overflow-y:auto;max-height:calc(70vh - 2px);-webkit-overflow-scrolling:touch}
+  #card.open .card-body{opacity:1;transform:none}
+  .card-head{display:flex;gap:13px;align-items:center;padding:15px 16px 11px 18px}
+  .flag{font-size:34px;line-height:1;filter:drop-shadow(0 4px 14px rgba(0,0,0,.7));flex:none}
+  .c-titles{min-width:0}
+  #cName{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;letter-spacing:.1em;
+    color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #cRegion{margin-top:5px;font-size:9.5px;letter-spacing:.2em;color:var(--cyan-dim);
+    text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #cClose{margin-left:auto;flex:none;width:30px;height:30px;border-radius:50%;cursor:pointer;
+    border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04);color:#cfe3f5;font-size:12px;
+    transition:all .2s;font-family:inherit}
+  #cClose:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 14px rgba(87,217,255,.35)}
+  .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 16px;padding:5px 18px 15px}
+  .stat{min-width:0}
+  .stat .k{display:block;font-size:8.5px;letter-spacing:.26em;color:rgba(120,200,255,.5);
+    text-transform:uppercase;margin-bottom:4px}
+  .stat .v{font-size:13px;font-weight:500;color:#eef6ff;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .card-foot{display:flex;justify-content:space-between;gap:10px;padding:10px 18px 14px;
+    border-top:1px solid rgba(255,255,255,.07);font-size:9px;letter-spacing:.22em;
+    color:rgba(150,180,210,.55);text-transform:uppercase;font-variant-numeric:tabular-nums}
+  /* ---- loader ---- */
+  #loader{position:fixed;inset:0;z-index:50;background:#000;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:26px;transition:opacity .9s}
+  #loader.hide{opacity:0;pointer-events:none}
+  .ring{width:58px;height:58px;border-radius:50%;border:2px solid rgba(87,217,255,.12);
+    border-top-color:var(--cyan);animation:spin 1.05s linear infinite;
+    box-shadow:0 0 34px rgba(87,217,255,.18)}
+  #loadTitle{font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:.5em;color:#fff;
+    text-shadow:0 0 24px rgba(87,217,255,.4);padding-left:.5em}
+  #loadStep{font-size:10px;letter-spacing:.32em;color:var(--dim);text-transform:uppercase}
+  .bar{width:212px;height:2px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0%;background:var(--cyan);transition:width .45s;
+    box-shadow:0 0 12px var(--cyan)}
+  /* ---- error ---- */
+  #err{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.88);display:none;
+    align-items:center;justify-content:center;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  #err.show{display:flex}
+  .err-box{width:min(400px,calc(100vw - 48px));background:rgba(10,12,18,.9);
+    border:1px solid rgba(255,120,120,.25);border-radius:16px;padding:26px 24px;text-align:center}
+  .err-box .t{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:.3em;color:#ff9a9a;margin-bottom:14px}
+  #errMsg{font-size:12px;line-height:1.7;color:var(--dim);margin-bottom:20px}
+  #errRetry{font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:.3em;padding:11px 26px;
+    background:rgba(87,217,255,.08);border:1px solid rgba(87,217,255,.4);color:var(--cyan);
+    border-radius:10px;cursor:pointer;transition:all .2s}
+  #errRetry:hover{background:rgba(87,217,255,.18);box-shadow:0 0 18px rgba(87,217,255,.3)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  @media (max-width:640px){
+    #legend{display:none}
+    h1{font-size:13px}
+    #hudStats{font-size:9px;letter-spacing:.14em}
+    #coords{font-size:9px}
+    .card-grid{gap:10px 12px;padding:4px 15px 13px}
+    .stat .v{font-size:12px}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="vig"></div>
+
+<div class="hud" id="hudTitle">
+  <div class="logo"><span class="dot"></span><h1>TERRA·ORBIT</h1></div>
+  <div class="sub">Planetary survey grid — live feed</div>
+</div>
+
+<div class="hud" id="hudStats">
+  <div>Landmasses <b id="stLand">—</b></div>
+  <div>Satellites <b id="stSat">—</b></div>
+  <div class="live"><span class="blink">●</span> Signal live</div>
+  <div style="opacity:.7">Drag rotate · Scroll zoom<br>Tap country for intel</div>
+</div>
+
+<div class="hud" id="legend">
+  <div class="row"><span class="sw ocean"></span>Ocean — void black</div>
+  <div class="row"><span class="sw land"></span>Terrain — dark mass</div>
+  <div class="row"><span class="sw border"></span>National borders</div>
+  <div class="row"><span class="sw sat"></span>Satellite track</div>
+</div>
+
+<div class="hud" id="coords">
+  <div><b id="coordLat">LAT&nbsp;···</b> · <b id="coordLon">LON&nbsp;···</b></div>
+  <div id="coordRange">RANGE 3.1×</div>
+</div>
+
+<div id="tooltip"></div>
+
+<aside id="card" role="dialog" aria-label="Country details" aria-hidden="true">
+  <div class="card-top"></div>
+  <div class="card-body">
+    <div class="card-head">
+      <span class="flag" id="cFlag">🌐</span>
+      <div class="c-titles">
+        <div id="cName">—</div>
+        <div id="cRegion">—</div>
+      </div>
+      <button id="cClose" aria-label="Close panel">✕</button>
+    </div>
+    <div class="card-grid">
+      <div class="stat"><span class="k">Capital</span><span class="v" id="sCap">—</span></div>
+      <div class="stat"><span class="k">Population</span><span class="v" id="sPop">—</span></div>
+      <div class="stat"><span class="k">Area</span><span class="v" id="sArea">—</span></div>
+      <div class="stat"><span class="k">Region</span><span class="v" id="sReg">—</span></div>
+      <div class="stat"><span class="k">Currency</span><span class="v" id="sCur">—</span></div>
+      <div class="stat"><span class="k">Languages</span><span class="v" id="sLang">—</span></div>
+      <div class="stat"><span class="k">Calling code</span><span class="v" id="sPhone">—</span></div>
+      <div class="stat"><span class="k">Domain</span><span class="v" id="sTld">—</span></div>
+    </div>
+    <div class="card-foot">
+      <span id="cGrid">GRID —</span>
+      <span id="cIso">ISO·3166 —</span>
+    </div>
+  </div>
+</aside>
+
+<div id="loader">
+  <div class="ring"></div>
+  <div id="loadTitle">TERRA·ORBIT</div>
+  <div id="loadStep">Initializing</div>
+  <div class="bar"><i id="loadFill"></i></div>
+</div>
+
+<div id="err">
+  <div class="err-box">
+    <div class="t">SIGNAL LOST</div>
+    <div id="errMsg">Unable to initialize the orbital grid.</div>
+    <button id="errRetry">RE-ESTABLISH LINK</button>
+  </div>
+</div>
+
+<script>
+  window.__booted = false;
+  window.__showError = function(msg){
+    var m = document.getElementById('errMsg'); if (m) m.textContent = msg;
+    var e = document.getElementById('err');  if (e) e.classList.add('show');
+    var l = document.getElementById('loader'); if (l) l.classList.add('hide');
+  };
+  window.__bootTimer = setTimeout(function(){
+    if (!window.__booted) window.__showError(
+      "Orbital initialization timed out — the border-data server could not be reached. Check your internet connection and retry.");
+  }, 18000);
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+/* ================================================================
+   TERRA·ORBIT — black-world 3D globe with glowing white borders,
+   orbiting satellites on dotted paths, and per-country intel cards.
+   ================================================================ */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+const tick = () => new Promise(r => requestAnimationFrame(r));
+const DEG = Math.PI / 180;
+
+/* ----------------------------------------------------------------
+   1 · COUNTRY DATABASE  [a2, capital, pop(millions), area km²,
+       region, currency, languages, phone, tld]
+   Covers every Natural-Earth admin-0 unit (UN states + territories)
+   ---------------------------------------------------------------- */
+const DATA = {
+/* ---- North America ---- */
+"United States of America":["US","Washington, D.C.",335.9,9833520,"Americas · North America","USD","English","+1","us"],
+"Canada":["CA","Ottawa",39.3,9984670,"Americas · North America","CAD","English / French","+1","ca"],
+"Mexico":["MX","Mexico City",129.3,1964375,"Americas · North America","MXN","Spanish","+52","mx"],
+"Belize":["BZ","Belmopan",0.42,22966,"Americas · Central America","BZD","English / Spanish","+501","bz"],
+"Guatemala":["GT","Guatemala City",17.6,108889,"Americas · Central America","GTQ","Spanish","+502","gt"],
+"El Salvador":["SV","San Salvador",6.3,21041,"Americas · Central America","USD","Spanish","+503","sv"],
+"Honduras":["HN","Tegucigalpa",10.6,112492,"Americas · Central America","HNL","Spanish","+504","hn"],
+"Nicaragua":["NI","Managua",7.0,130373,"Americas · Central America","NIO","Spanish","+505","ni"],
+"Costa Rica":["CR","San José",5.2,51100,"Americas · Central America","CRC","Spanish","+506","cr"],
+"Panama":["PA","Panama City",4.5,75417,"Americas · Central America","PAB / USD","Spanish","+507","pa"],
+"Cuba":["CU","Havana",11.1,109884,"Americas · Caribbean","CUP","Spanish","+53","cu"],
+"Jamaica":["JM","Kingston",2.8,10991,"Americas · Caribbean","JMD","English","+1","jm"],
+"Haiti":["HT","Port-au-Prince",11.7,27750,"Americas · Caribbean","HTG","French / Creole","+509","ht"],
+"Dominican Rep.":["DO","Santo Domingo",11.3,48671,"Americas · Caribbean","DOP","Spanish","+1","do"],
+"Trinidad and Tobago":["TT","Port of Spain",1.5,5130,"Americas · Caribbean","TTD","English","+1","tt"],
+"Barbados":["BB","Bridgetown",0.28,430,"Americas · Caribbean","BBD","English","+1","bb"],
+"Bahamas":["BS","Nassau",0.39,13943,"Americas · Caribbean","BSD","English","+1","bs"],
+"Antigua and Barbuda":["AG","St. John's",0.10,442,"Americas · Caribbean","XCD","English","+1","ag"],
+"St. Kitts and Nevis":["KN","Basseterre",0.053,261,"Americas · Caribbean","XCD","English","+1","kn"],
+"St. Lucia":["LC","Castries",0.18,616,"Americas · Caribbean","XCD","English","+1","lc"],
+"St. Vincent and the Grenadines":["VC","Kingstown",0.11,389,"Americas · Caribbean","XCD","English","+1","vc"],
+"Grenada":["GD","St. George's",0.13,344,"Americas · Caribbean","XCD","English","+1","gd"],
+"Dominica":["DM","Roseau",0.07,751,"Americas · Caribbean","XCD","English","+1","dm"],
+"Aruba":["AW","Oranjestad",0.11,180,"Americas · Caribbean","AWG","Dutch / Papiamento","+297","aw"],
+"Curacao":["CW","Willemstad",0.16,444,"Americas · Caribbean","ANG","Dutch / Papiamento","+599","cw"],
+"Bonaire, Sint Eustatius and Saba":["BQ","Kralendijk",0.03,294,"Americas · Caribbean","ANG","Dutch / Papiamento","+599","bq"],
+"Turks and Caicos Is.":["TC","Cockburn Town",0.04,948,"Americas · Caribbean","USD","English","+1","tc"],
+"Cayman Is.":["KY","George Town",0.07,264,"Americas · Caribbean","KYD","English","+345","ky"],
+"British Virgin Is.":["VG","Road Town",0.03,151,"Americas · Caribbean","USD","English","+1","vg"],
+"U.S. Virgin Is.":["VI","Charlotte Amalie",0.05,347,"Americas · Caribbean","USD","English","+1","vi"],
+"Montserrat":["MS","Plymouth",0.005,102,"Americas · Caribbean","XCD","English","+1","ms"],
+"Anguilla":["AI","The Valley",0.014,91,"Americas · Caribbean","XCD","English","+1","ai"],
+"Bermuda":["BM","Hamilton",0.06,54,"Americas · North America","BMD","English","+1","bm"],
+"Puerto Rico":["PR","San Juan",3.2,8870,"Americas · Caribbean","USD","Spanish / English","+1","pr"],
+"Greenland":["GL","Nuuk",0.057,2166086,"Americas · North America","DKK","Greenlandic / Danish","+299","gl"],
+"Svalbard and Jan Mayen":["SJ","Longyearbyen",0.004,62080,"Europe · Northern","NOK","Norwegian","+47","sj"],
+"Faroe Is.":["FO","Torshavn",0.05,1393,"Europe · Northern","DKK","Faroese","+298","fo"],
+/* ---- South America ---- */
+"Argentina":["AR","Buenos Aires",45.8,2780400,"Americas · South America","ARS","Spanish","+54","ar"],
+"Bolivia":["BO","La Paz",12.5,1098581,"Americas · South America","BOB","Spanish / Aymara","+591","bo"],
+"Brazil":["BR","Brasília",216.4,8515767,"Americas · South America","BRL","Portuguese","+55","br"],
+"Chile":["CL","Santiago",20.1,756102,"Americas · South America","CLP","Spanish","+56","cl"],
+"Colombia":["CO","Bogotá",52.1,1141748,"Americas · South America","COP","Spanish","+57","co"],
+"Ecuador":["EC","Quito",18.0,276841,"Americas · South America","USD","Spanish","+593","ec"],
+"Paraguay":["PY","Asunción",6.9,406752,"Americas · South America","PYG","Spanish / Guaraní","+595","py"],
+"Peru":["PE","Lima",34.4,1285216,"Americas · South America","PEN","Spanish / Quechua","+51","pe"],
+"Uruguay":["UY","Montevideo",3.4,181034,"Americas · South America","UYU","Spanish","+598","uy"],
+"Venezuela":["VE","Caracas",28.8,916445,"Americas · South America","VES","Spanish","+58","ve"],
+"Suriname":["SR","Paramaribo",0.62,163820,"Americas · South America","SRD","Dutch","+597","sr"],
+"Guyana":["GY","Georgetown",0.84,214969,"Americas · South America","GYD","English","+592","gy"],
+"French Guiana":["GF","Cayenne",0.30,83532,"Americas · South America","EUR","French","+594","gf"],
+"Martinique":["MQ","Fort-de-France",0.37,1128,"Americas · Caribbean","EUR","French","+596","mq"],
+"Guadeloupe":["GP","Basse-Terre",0.40,1628,"Americas · Caribbean","EUR","French","+590","gp"],
+"St. Martin (French)":["MF","Marigot",0.003,53,"Americas · Caribbean","EUR","French / English","+590","mf"],
+"St. Barthélemy":["BL","Gustavia",0.009,21,"Americas · Caribbean","EUR","French","+590","bl"],
+"Falkland Is. (Malvinas)":["FK","Stanley",0.004,12173,"Americas · South America","FKP","English","+500","fk"],
+"S. Georgia and S. Sandwich Is.":["GS","King Edward Point",0.0003,3903,"Antarctica · Subantarctic","GBP","—","+500","gs"],
+/* ---- Africa ---- */
+"Algeria":["DZ","Algiers",45.6,2381741,"Africa · North Africa","DZD","Arabic / Berber","+213","dz"],
+"Morocco":["MA","Rabat",37.8,446550,"Africa · North Africa","MAD","Arabic / Berber","+212","ma"],
+"Tunisia":["TN","Tunis",12.5,163610,"Africa · North Africa","TND","Arabic / French","+216","tn"],
+"Libya":["LY","Tripoli",6.9,1759540,"Africa · North Africa","LYD","Arabic","+218","ly"],
+"Egypt":["EG","Cairo",112.7,1002450,"Africa · North Africa","EGP","Arabic","+20","eg"],
+"W. Sahara":["EH","El Aaiún (disputed)",0.6,266000,"Africa · North Africa","MAD","Arabic","+212","eh"],
+"Mauritania":["MR","Nouakchott",4.9,1030700,"Africa · West Africa","MRU","Arabic / French","+222","mr"],
+"Mali":["ML","Bamako",23.3,1240192,"Africa · West Africa","XOF","French / Bambara","+223","ml"],
+"Guinea":["GN","Conakry",14.2,245857,"Africa · West Africa","GNF","French","+224","gn"],
+"Guinea-Bissau":["GW","Bissau",2.1,36125,"Africa · West Africa","XOF","Portuguese","+245","gw"],
+"Senegal":["SN","Dakar",17.8,196722,"Africa · West Africa","XOF","French","+221","sn"],
+"Gambia":["GM","Banjul",2.7,11295,"Africa · West Africa","GMD","English","+220","gm"],
+"Sierra Leone":["SL","Freetown",8.8,71740,"Africa · West Africa","SLE","English / Krio","+232","sl"],
+"Liberia":["LR","Monrovia",5.4,111369,"Africa · West Africa","LRD","English","+231","lr"],
+"Côte d'Ivoire":["CI","Yamoussoukro",28.9,322463,"Africa · West Africa","XOF","French","+225","ci"],
+"Burkina Faso":["BF","Ouagadougou",23.3,272897,"Africa · West Africa","XOF","French","+226","bf"],
+"Togo":["TG","Lomé",9.1,56785,"Africa · West Africa","XOF","French / Ewe","+228","tg"],
+"Benin":["BJ","Porto-Novo",13.7,112622,"Africa · West Africa","XOF","French","+229","bj"],
+"Niger":["NE","Niamey",27.2,1267000,"Africa · West Africa","XOF","French / Hausa","+227","ne"],
+"Nigeria":["NG","Abuja",223.8,923768,"Africa · West Africa","NGN","English / Yoruba / Hausa","+234","ng"],
+"Ghana":["GH","Accra",34.1,238533,"Africa · West Africa","GHS","English / Twi","+233","gh"],
+"Cape Verde":["CV","Praia",0.59,4033,"Africa · West Africa","CVE","Portuguese / Kriol","+238","cv"],
+"Sao Tome and Principe":["ST","São Tomé",0.22,964,"Africa · Central Africa","STN","Portuguese","+239","st"],
+"Gabon":["GA","Libreville",2.4,267668,"Africa · Central Africa","XAF","French / Fang","+241","ga"],
+"Equatorial Guinea":["GQ","Malabo",1.7,28051,"Africa · Central Africa","XAF","Spanish / French","+240","gq"],
+"Central African Rep.":["CF","Bangui",5.5,622984,"Africa · Central Africa","XAF","French / Sango","+236","cf"],
+"Congo (Brazzaville)":["CG","Brazzaville",6.1,342000,"Africa · Central Africa","XAF","French / Lingala","+242","cg"],
+"Dem. Rep. Congo":["CD","Kinshasa",102.3,2344858,"Africa · Central Africa","CDF","French / Swahili / Lingala","+243","cd"],
+"Cameroon":["CM","Yaoundé",28.6,475442,"Africa · Central Africa","XAF","French / English","+237","cm"],
+"Chad":["TD","N'Djamena",18.3,1284000,"Africa · Central Africa","XAF","Arabic / French","+235","td"],
+"Angola":["AO","Luanda",36.7,1246700,"Africa · Central Africa","AOA","Portuguese","+244","ao"],
+"Djibouti":["DJ","Djibouti",1.1,23200,"Africa · East Africa","DJF","French / Arabic / Afar","+253","dj"],
+"Eritrea":["ER","Asmara",3.7,117600,"Africa · East Africa","ERN","Tigrinya / Arabic","+291","er"],
+"Ethiopia":["ET","Addis Ababa",126.5,1104368,"Africa · East Africa","ETB","Amharic / Oromo","+251","et"],
+"Somalia":["SO","Mogadishu",18.1,637657,"Africa · East Africa","SOS","Somali / Arabic","+252","so"],
+"Kenya":["KE","Nairobi",55.1,580369,"Africa · East Africa","KES","Swahili / English","+254","ke"],
+"Uganda":["UG","Kampala",48.6,241550,"Africa · East Africa","UGX","English / Swahili","+256","ug"],
+"Tanzania":["TZ","Dodoma",67.4,945087,"Africa · East Africa","TZS","Swahili / English","+255","tz"],
+"Sudan":["SD","Khartoum",48.1,1886068,"Africa · North Africa","SDG","Arabic / Nubian","+249","sd"],
+"S. Sudan":["SS","Juba",11.1,619745,"Africa · East Africa","SSP","English / Dinka","+211","ss"],
+"Rwanda":["RW","Kigali",14.1,26338,"Africa · East Africa","RWF","Kinyarwanda / English","+250","rw"],
+"Burundi":["BI","Gitega",13.0,27834,"Africa · East Africa","BIF","Kirundi / French","+257","bi"],
+"Comoros":["KM","Moroni",0.87,1862,"Africa · East Africa","KMF","Arabic / French","+269","km"],
+"Mayotte":["YT","Mamoudzou",0.27,374,"Africa · East Africa","EUR","French / Shimaore","+262","yt"],
+"Madagascar":["MG","Antananarivo",30.3,587041,"Africa · East Africa","MGA","Malagasy / French","+261","mg"],
+"Mozambique":["MZ","Maputo",33.9,801590,"Africa · Southern Africa","MZN","Portuguese","+258","mz"],
+"Mauritius":["MU","Port Louis",1.3,2040,"Africa · Southern Africa","MUR","English / French","+230","mu"],
+"Seychelles":["SC","Victoria",0.10,452,"Africa · Southern Africa","SCR","English / French / Seselwa","+248","sc"],
+"Malawi":["MW","Lilongwe",20.9,118484,"Africa · Southern Africa","MWK","Chichewa / English","+265","mw"],
+"Zambia":["ZM","Lusaka",21.0,752612,"Africa · Southern Africa","ZMW","English / Bemba","+260","zm"],
+"Zimbabwe":["ZW","Harare",16.7,390757,"Africa · Southern Africa","ZWG","English / Shona / Ndebele","+263","zw"],
+"Namibia":["NA","Windhoek",2.6,825615,"Africa · Southern Africa","NAD","English / Oshiwambo","+264","na"],
+"Botswana":["BW","Gaborone",2.7,581730,"Africa · Southern Africa","BWP","English / Tswana","+267","bw"],
+"Eswatini":["SZ","Mbabane",1.2,17364,"Africa · Southern Africa","SZL","English / Swazi","+268","sz"],
+"Lesotho":["LS","Maseru",2.3,30355,"Africa · Southern Africa","LSL / ZAR","Sesotho / English","+266","ls"],
+"South Africa":["ZA","Pretoria",60.4,1221037,"Africa · Southern Africa","ZAR","English / Zulu / Xhosa","+27","za"],
+"British Indian Ocean Terr.":["IO","Diego Garcia (admin)",0.004,60,"Africa · Indian Ocean","USD","English","+246","io"],
+"St. Helena, Ascension and Tristan da Cunha":["SH","Jamestown",0.006,314,"Africa · Atlantic","GBP","English","+290","sh"],
+/* ---- Asia ---- */
+"Afghanistan":["AF","Kabul",42.4,652230,"Asia · South Asia","AFN","Pashto / Dari","+93","af"],
+"Pakistan":["PK","Islamabad",240.5,881913,"Asia · South Asia","PKR","Urdu / Punjabi","+92","pk"],
+"India":["IN","New Delhi",1428.6,3287263,"Asia · South Asia","INR","Hindi / English / Tamil","+91","in"],
+"Nepal":["NP","Kathmandu",30.9,147181,"Asia · South Asia","NPR","Nepali / Maithili","+977","np"],
+"Bhutan":["BT","Thimphu",0.077,38394,"Asia · South Asia","BTN","Dzongkha / Nepali","+975","bt"],
+"Bangladesh":["BD","Dhaka",171.2,147570,"Asia · South Asia","BDT","Bengali / English","+880","bd"],
+"Sri Lanka":["LK","Sri Jayawardenepura Kotte",22.2,65610,"Asia · South Asia","LKR","Sinhala / Tamil","+94","lk"],
+"Iran":["IR","Tehran",89.2,1648195,"Asia · West Asia","IRR","Persian / Kurdish","+98","ir"],
+"Türkiye":["TR","Ankara",85.8,783562,"Asia · West Asia","TRY","Turkish / Kurdish","+90","tr"],
+"Turkmenistan":["TM","Ashgabat",6.5,488100,"Asia · Central Asia","TMT","Turkmen / Russian","+993","tm"],
+"Uzbekistan":["UZ","Tashkent",35.6,447400,"Asia · Central Asia","UZS","Uzbek / Russian","+998","uz"],
+"Kazakhstan":["KZ","Astana",19.6,2724900,"Asia · Central Asia","KZT","Kazakh / Russian","+7","kz"],
+"Kyrgyzstan":["KG","Bishkek",7.0,199951,"Asia · Central Asia","KGS","Kyrgyz / Russian","+996","kg"],
+"Tajikistan":["TJ","Dushanbe",10.3,143100,"Asia · Central Asia","TJS","Tajik / Russian","+992","tj"],
+"Russia":["RU","Moscow",143.8,17098242,"Europe · Eastern","RUB","Russian / Tatar","+7","ru"],
+"Iraq":["IQ","Baghdad",45.6,438317,"Asia · West Asia","IQD","Arabic / Kurdish","+964","iq"],
+"Syria":["SY","Damascus",23.2,185180,"Asia · West Asia","SYP","Arabic / Kurdish","+963","sy"],
+"Israel":["IL","Jerusalem",9.9,22072,"Asia · West Asia","ILS","Hebrew / Arabic","+972","il"],
+"Palestine":["PS","Ramallah",5.4,6220,"Asia · West Asia","ILS (loc.)","Arabic / Hebrew","+970","ps"],
+"Jordan":["JO","Amman",11.3,89342,"Asia · West Asia","JOD","Arabic / English","+962","jo"],
+"Saudi Arabia":["SA","Riyadh",36.9,2149690,"Asia · West Asia","SAR","Arabic","+966","sa"],
+"Yemen":["YE","Sanaa",34.4,527968,"Asia · West Asia","YER","Arabic / Soqotri","+967","ye"],
+"Oman":["OM","Muscat",4.6,309500,"Asia · West Asia","OMR","Arabic / Balochi","+968","om"],
+"United Arab Emirates":["AE","Abu Dhabi",9.5,83600,"Asia · West Asia","AED","Arabic / Hindi","+971","ae"],
+"Qatar":["QA","Doha",2.7,11586,"Asia · West Asia","QAR","Arabic / Malayalam","+974","qa"],
+"Bahrain":["BH","Manama",0.80,765,"Asia · West Asia","BHD","Arabic / Hindi","+973","bh"],
+"Kuwait":["KW","Kuwait City",4.3,17818,"Asia · West Asia","KWD","Arabic / Urdu","+965","kw"],
+"N. Cyprus":["XN","Lefkoşa (disputed)",0.36,3355,"Asia · West Asia","EUR","Turkish / Greek","+90","—"],
+"Cyprus":["CY","Nicosia",0.93,9251,"Europe · Southern","EUR","Greek / Turkish","+357","cy"],
+"Azerbaijan":["AZ","Baku",10.1,86600,"Asia · West Asia","AZN","Azerbaijani / Russian","+994","az"],
+"Armenia":["AM","Yerevan",2.8,29743,"Asia · West Asia","AMD","Armenian / Russian","+374","am"],
+"Georgia":["GE","Tbilisi",3.7,69700,"Asia · West Asia","GEL","Georgian / Russian","+995","ge"],
+"Turkey":["TR","Ankara",85.8,783562,"Asia · West Asia","TRY","Turkish / Kurdish","+90","tr"],
+"Lebanon":["LB","Beirut",5.6,10452,"Asia · West Asia","LBP","Arabic / French","+961","lb"],
+"China":["CN","Beijing",1411.8,9596961,"Asia · East Asia","CNY","Mandarin / Cantonese","+86","cn"],
+"Japan":["JP","Tokyo",124.5,377975,"Asia · East Asia","JPY","Japanese","+81","jp"],
+"Korea, North":["KP","Pyongyang",26.2,120538,"Asia · East Asia","KPW","Korean","+850","kp"],
+"Korea, South":["KR","Seoul",51.7,100210,"Asia · East Asia","KRW","Korean","+82","kr"],
+"Mongolia":["MN","Ulaanbaatar",3.4,1564110,"Asia · East Asia","MNT","Mongolian / Russian","+976","mn"],
+"Taiwan":["TW","Taipei",23.4,36197,"Asia · East Asia","TWD","Mandarin / Hokkien","+886","tw"],
+"Myanmar":["MM","Naypyidaw",54.6,676578,"Asia · Southeast Asia","MMK","Burmese / Shan","+95","mm"],
+"Thailand":["TH","Bangkok",71.8,513120,"Asia · Southeast Asia","THB","Thai / Isan","+66","th"],
+"Laos":["LA","Vientiane",7.7,236800,"Asia · Southeast Asia","LAK","Lao / Hmong","+856","la"],
+"Vietnam":["VN","Hanoi",98.9,331212,"Asia · Southeast Asia","VND","Vietnamese / Khmer","+84","vn"],
+"Cambodia":["KH","Phnom Penh",17.2,181035,"Asia · Southeast Asia","KHR","Khmer / Vietnamese","+855","kh"],
+"Malaysia":["MY","Kuala Lumpur",34.3,330803,"Asia · Southeast Asia","MYR","Malay / Mandarin / Tamil","+60","my"],
+"Singapore":["SG","Singapore",6.0,733,"Asia · Southeast Asia","SGD","English / Mandarin / Malay / Tamil","+65","sg"],
+"Indonesia":["ID","Jakarta",277.5,1904569,"Asia · Southeast Asia","IDR","Indonesian / Javanese","+62","id"],
+"Philippines":["PH","Manila",117.3,300000,"Asia · Southeast Asia","PHP","Filipino / Cebuano / English","+63","ph"],
+"Brunei":["BN","Bandar Seri Begawan",0.45,5765,"Asia · Southeast Asia","BND","Malay / English","+673","bn"],
+"Timor-Leste":["TL","Dili",1.37,14874,"Asia · Southeast Asia","USD / USD","Tetum / Portuguese","+670","tl"],
+/* ---- Europe ---- */
+"United Kingdom":["GB","London",68.3,243610,"Europe · Northern","GBP","English / Welsh / Scots","+44","gb"],
+"Ireland":["IE","Dublin",5.3,70273,"Europe · Northern","EUR","Irish / English","+353","ie"],
+"Iceland":["IS","Reykjavík",0.39,103000,"Europe · Northern","ISK","Icelandic / English","+354","is"],
+"Norway":["NO","Oslo",5.6,385207,"Europe · Northern","NOK","Norwegian / Sami","+47","no"],
+"Sweden":["SE","Stockholm",10.5,450295,"Europe · Northern","SEK","Swedish / Meänkieli","+46","se"],
+"Finland":["FI","Helsinki",5.6,338424,"Europe · Northern","EUR","Finnish / Swedish","+358","fi"],
+"Denmark":["DK","Copenhagen",5.9,42933,"Europe · Northern","DKK","Danish / German","+45","dk"],
+"Poland":["PL","Warsaw",36.8,312696,"Europe · Eastern","PLN","Polish / Kashubian","+48","pl"],
+"Ukraine":["UA","Kyiv",36.7,603550,"Europe · Eastern","UAH","Ukrainian / Polish","+380","ua"],
+"Belarus":["BY","Minsk",9.2,207600,"Europe · Eastern","BYN","Belarusian / Russian","+375","by"],
+"Kosovo":["XK","Pristina",1.7,10887,"Europe · Balkans","EUR","Albanian / Serbian","+383","xk"],
+"Serbia":["RS","Belgrade",6.6,88361,"Europe · Balkans","RSD","Serbian / Hungarian","+381","rs"],
+"Croatia":["HR","Zagreb",3.9,56594,"Europe · Balkans","EUR","Croatian / Italian","+385","hr"],
+"Bosnia and Herz.":["BA","Sarajevo",3.2,51197,"Europe · Balkans","BAM","Bosnian / Croatian / Serbian","+387","ba"],
+"Montenegro":["ME","Podgorica",0.62,13812,"Europe · Balkans","EUR","Montenegrin / Serbian","+382","me"],
+"Albania":["AL","Tirana",2.8,28748,"Europe · Balkans","ALL","Albanian / Greek","+355","al"],
+"N. Macedonia":["MK","Skopje",1.8,25713,"Europe · Balkans","MKD","Macedonian / Albanian","+389","mk"],
+"Greece":["GR","Athens",10.4,131957,"Europe · Southern","EUR","Greek / Turkic","+30","gr"],
+"Bulgaria":["BG","Sofia",6.5,110879,"Europe · Balkans","BGN","Bulgarian / Turkish","+359","bg"],
+"Romania":["RO","Bucharest",19.0,238397,"Europe · Eastern","RON","Romanian / Hungarian","+40","ro"],
+"Moldova":["MD","Chișinău",2.5,33846,"Europe · Eastern","MDL","Moldovan / Russian","+373","md"],
+"Lithuania":["LT","Vilnius",2.9,65300,"Europe · Northern","EUR","Lithuanian / Polish","+370","lt"],
+"Latvia":["LV","Riga",1.87,64589,"Europe · Northern","EUR","Latvian / Russian","+371","lv"],
+"Estonia":["EE","Tallinn",1.37,45228,"Europe · Northern","EUR","Estonian / Russian","+372","ee"],
+"Germany":["DE","Berlin",84.5,357588,"Europe · Western","EUR","German / Turkish / Kurdish","+49","de"],
+"Netherlands":["NL","Amsterdam",17.9,41850,"Europe · Western","EUR","Dutch / Papiamento / Frisian","+31","nl"],
+"Belgium":["BE","Brussels",11.8,30528,"Europe · Western","EUR","Dutch / French / German","+32","be"],
+"Luxembourg":["LU","Luxembourg",0.66,2586,"Europe · Western","EUR","French / German / Luxembourgish","+352","lu"],
+"Switzerland":["CH","Bern",8.9,41285,"Europe · Western","CHF","German / French / Italian / Romansh","+41","ch"],
+"Austria":["AT","Vienna",9.1,83879,"Europe · Western","EUR","German / Turkish / Arabic","+43","at"],
+"Liechtenstein":["LI","Vaduz",0.039,160,"Europe · Western","CHF","German / Romansh","+423","li"],
+"France":["FR","Paris",68.2,640679,"Europe · Western","EUR","French / Breton / Corsican","+33","fr"],
+"Monaco":["MC","Monaco",0.039,2.0,"Europe · Western","EUR","French / Italian / Monégasque","+377","mc"],
+"Spain":["ES","Madrid",48.1,505992,"Europe · Southern","EUR","Spanish / Catalan / Galician / Basque","+34","es"],
+"Portugal":["PT","Lisbon",10.5,92226,"Europe · Southern","EUR","Portuguese / Mirandese","+351","pt"],
+"Andorra":["AD","Andorra la Vella",0.08,468,"Europe · Southern","EUR","Catalan / Spanish","+376","ad"],
+"Italy":["IT","Rome",58.9,301340,"Europe · Southern","EUR","Italian / Sicilian / Sardinian","+39","it"],
+"San Marino":["SM","San Marino",0.034,61,"Europe · Southern","EUR","Italian / Romansh","+378","sm"],
+"Vatican City":["VA","Vatican City",0.0008,0.44,"Europe · Southern","EUR","Latin / Italian / French","+379","va"],
+"Malta":["MT","Valletta",0.54,316,"Europe · Southern","EUR","Maltese / English","+356","mt"],
+"Czechia":["CZ","Prague",10.9,78871,"Europe · Eastern","CZK","Czech / Slovak","+420","cz"],
+"Slovakia":["SK","Bratislava",5.4,49037,"Europe · Eastern","EUR","Slovak / Hungarian","+421","sk"],
+"Hungary":["HU","Budapest",9.6,93028,"Europe · Eastern","HUF","Hungarian / German","+36","hu"],
+"Slovenia":["SI","Ljubljana",2.1,20273,"Europe · Balkans","EUR","Slovenian / Italian / German","+386","si"],
+"Gibraltar":["GI","Gibraltar",0.034,6,"Europe · Southern","GIP","English / Llanito / Arabic","+350","gi"],
+"Jersey":["JE","Saint Helier",0.11,116,"Europe · Northern","GBP","English / Jèrriais","+44","je"],
+"Guernsey":["GG","Saint Peter Port",0.066,78,"Europe · Northern","GBP","English / Guernésiais","+44","gg"],
+"Isle of Man":["IM","Douglas",0.085,572,"Europe · Northern","GBP","English / Manx","+44","im"],
+/* ---- Oceania ---- */
+"Australia":["AU","Canberra",26.6,7692024,"Oceania · Australasia","AUD","English / Aboriginal + Torres Strait","+61","au"],
+"New Zealand":["NZ","Wellington",5.2,268021,"Oceania · Australasia","NZD","English / Māori / Signing","+64","nz"],
+"Papua New Guinea":["PG","Port Moresby",10.3,462840,"Oceania · Melanesia","PGK","English / Tok Pisin / Hiri Motu","+675","pg"],
+"Solomon Is.":["SB","Honiara",0.74,28896,"Oceania · Melanesia","SBD","English / Pijin / Tetun","+677","sb"],
+"Vanuatu":["VU","Port Vila",0.33,12189,"Oceania · Melanesia","VUV","Bislama / French / English","+678","vu"],
+"Fiji":["FJ","Suva",0.93,18274,"Oceania · Melanesia","FJD","English / Fijian / Hindi","+679","fj"],
+"New Caledonia":["NC","Nouméa",0.27,18575,"Oceania · Melanesia","XPF","French / Kanak / Paicî","+687","nc"],
+"Norfolk Is.":["NF","Kingston",0.002,36,"Oceania · Australasia","AUD","English / Norfolk","+672","nf"],
+"Kiribati":["KI","South Tarawa",0.13,811,"Oceania · Micronesia","AUD","Gilbertese / English","+686","ki"],
+"Marshall Is.":["MH","Majuro",0.042,181,"Oceania · Micronesia","USD","Marshallese / English","+692","mh"],
+"Micronesia":["FM","Palikir",0.115,702,"Oceania · Micronesia","USD","English / Pohnpeian / Chuukese","+691","fm"],
+"Palau":["PW","Ngerulmud",0.018,459,"Oceania · Micronesia","USD","English / Palauan","+680","pw"],
+"Nauru":["NR","Yaren",0.012,21,"Oceania · Micronesia","AUD","Nauruan / English","+674","nr"],
+"American Samoa":["AS","Pago Pago",0.057,199,"Oceania · Polynesia","USD","Samoan / English","+1","as"],
+"Samoa":["WS","Apia",0.23,2842,"Oceania · Polynesia","WST","Samoan / English","+685","ws"],
+"Tonga":["TO","Nuku'alofa",0.11,748,"Oceania · Polynesia","TOP","Tongan / English","+676","to"],
+"Cook Is.":["CK","Avarua",0.017,236,"Oceania · Polynesia","NZD","English / Māori Cook Islands","+682","ck"],
+"Niue":["NU","Alofi",0.002,260,"Oceania · Polynesia","NZD","Niuean / English","+683","nu"],
+"Tokelau":["TK","Faleola",0.001,12,"Oceania · Polynesia","NZD","Tokelauan / English","+690","tk"],
+"French Polynesia":["PF","Papeete",0.28,4167,"Oceania · Polynesia","XPF","French / Tahitian","+689","pf"],
+"Wallis and Futuna":["WF","Mata-Utu",0.011,142,"Oceania · Polynesia","XPF","Wallisian / French / Fijian","+681","wf"],
+"U.S. Minor Outlying Is.":["UM","— (admin. Honolulu)",0.0003,161,"Oceania · Pacific","USD","English / various","+1","um"],
+"Pitcairn Is.":["PN","Adamstown",0.0003,47,"Oceania · Polynesia","NZD","Pitcairn-Niue-Pango","+870","pn"],
+/* ---- Antarctica ---- */
+"Antarctica":["AQ","No fixed admin (McMurdo Station)",0.001,1400000,"Antarctica · Polar","— (USD by treaty)","—","+672","aq"],
+"Fr. S. Antarctic Lands":["TF","Port-aux-Français",0.001,774700,"Antarctica · Subantarctic","EUR","French","+262","tf"],
+"Heard Is. and McDonald Is.":["HM","—",0,412,"Antarctica · Subantarctic","AUD","—","+672","hm"],
+"Bouvet Is.":["BV","—",0,49,"Antarctica · Subantarctic","NOK","—","+47","bv"],
+"Reunion":["RE","Saint-Denis",0.87,2512,"Africa · Western Indian Ocean","EUR","French / Réunionnais","+262","re"],
+"St. Pierre and Miquelon":["PM","Saint-Pierre",0.006,242,"Americas · North America","EUR","French / English","+508","pm"],
+"Christmas Is.":["CX","Flying Fish Cove",0.02,135,"Oceania · Australasia","AUD","English / Cantonese","+61","cx"],
+"Cocos (Keeling) Is.":["CC","West Island",0.0006,14,"Oceania · Australasia","AUD","English / Malay","+61","cc"],
+"Sint Maarten (Dutch)":["SX","Philipsburg",0.043,34,"Americas · Caribbean","ANG","Dutch / English / Papiamento","+1","sx"],
+"Akrotiri":["—","Akrotiri",0.0003,30,"Asia · West Asia","GBP","English / Greek","+357","—"],
+"Dhekelia":["—","Dhekelia",0.0002,3,"Asia · West Asia","GBP","English / Greek","+357","—"]
+};
+/* remove accidental null entries */
+for (const k in DATA) if (!DATA[k]) delete DATA[k];
+
+/* Natural-Earth name variants → canonical DATA keys */
+const ALIAS = {
+  "Ivory Coast":"Côte d'Ivoire",
+  "Côte d'Ivoire":"Côte d'Ivoire",
+  "Cote d'Ivoire":"Côte d'Ivoire",
+  "C. African Rep.":"Central African Rep.",
+  "Cape Verde":"Cape Verde",
+  "Den.":"Denmark",
+  "Rep. Congo":"Congo (Brazzaville)",
+  "Congo (Kinshasa)":"Dem. Rep. Congo",
+  "Eq. Guinea":"Equatorial Guinea",
+  "Swaziland":"Eswatini",
+  "São Tomé and Príncipe":"Sao Tome and Principe",
+  "São Tomé and Principe":"Sao Tome and Principe",
+  "Antigua and Barb.":"Antigua and Barbuda",
+  "Trinidad and Tob.":"Trinidad and Tobago",
+  "Turkiye":"Türkiye",
+  "Turquie":"Türkiye",
+  "Burma":"Myanmar",
+  "Lao PDR":"Laos",
+  "Macedonia":"N. Macedonia",
+  "North Macedonia":"N. Macedonia",
+  "Czech Rep.":"Czechia",
+  "Czech Republic":"Czechia",
+  "Bosnia and Herzegovina":"Bosnia and Herz.",
+  "Brunei Darussalam":"Brunei",
+  "Br. Indian Ocean Terr.":"British Indian Ocean Terr.",
+  "F.M.R. of Micronesia":"Micronesia",
+  "Micronesia (Fed. Sts.)":"Micronesia",
+  "N. Korea":"Korea, North",
+  "North Korea":"Korea, North",
+  "S. Korea":"Korea, South",
+  "South Korea":"Korea, South",
+  "S. Sudan":"S. Sudan",
+  "South Sudan":"S. Sudan",
+  "W. Sahara":"W. Sahara",
+  "Western Sahara":"W. Sahara",
+  "S. Georgia and S. Sandwich Is.":"S. Georgia and S. Sandwich Is.",
+  "South Georgia and the South Sandwich Is.":"S. Georgia and S. Sandwich Is.",
+  "St. Vincent and the Grenadines":"St. Vincent and the Grenadines",
+  "St. Vin. and Gren.":"St. Vincent and the Grenadines",
+  "Solomon Islands":"Solomon Is.",
+  "Marshall Islands":"Marshall Is.",
+  "Cook Islands":"Cook Is.",
+  "Norfolk Island":"Norfolk Is.",
+  "Turks and Caicos Islands":"Turks and Caicos Is.",
+  "Cayman Islands":"Cayman Is.",
+  "Virgin Islands (U.S.)":"U.S. Virgin Is.",
+  "Bonaire, Sint Eust. and Saba":"Bonaire, Sint Eustatius and Saba",
+  "St. Martin (Fr.)":"St. Martin (French)",
+  "St. Barthelemy":"St. Barthélemy",
+  "Moldova (Rep. of)":"Moldova",
+  "Palestine (State of)":"Palestine",
+  "Gaza":"Palestine",
+  "West Bank":"Palestine",
+  "Holy See":"Vatican City",
+  "United States":"United States of America",
+  "UAE":"United Arab Emirates",
+  "Curaçao":"Curacao",
+  "Curacao":"Curacao",
+  "Col.":"Colombia",
+  "Cypr.":"Cyprus",
+  "Heard Is. and McD. Is.":"Heard Is. and McDonald Is.",
+  "Pitcairn":"Pitcairn Is.",
+  "U.S. Virgin Is.":"U.S. Virgin Is.",
+  "Réunion":"Reunion",
+  "Dominican Republic":"Dominican Rep.",
+  "Christmas Island":"Christmas Is.",
+  "Cocos (Keeling) Islands":"Cocos (Keeling) Is.",
+  "Sint Maarten":"Sint Maarten (Dutch)",
+  "Bouvet Island":"Bouvet Is."
+};
+
+const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");
+const byNorm = {};
+for (const k in DATA) byNorm[norm(k)] = k;
+
+function dataFor(feature){
+  let n = (feature && feature.properties && feature.properties.name) || "Unknown";
+  if (ALIAS[n]) n = ALIAS[n];
+  let key = n, d = DATA[n];
+  if (!d){ const k = byNorm[norm(n)]; if (k){ d = DATA[k]; key = k; } }
+  return { name: key, d: d || null };
+}
+function flagEmoji(a2){
+  if (!a2 || a2.length !== 2) return "🌐";
+  try { return String.fromCodePoint(...[...a2.toUpperCase()].map(c => 127397 + c.charCodeAt(0))); }
+  catch(e){ return "🌐"; }
+}
+function fmtPop(m){
+  if (m >= 1000) return (m/1000).toFixed(2) + " B";
+  if (m >= 100)  return Math.round(m).toLocaleString("en-US") + " M";
+  if (m >= 10)   return m.toFixed(1) + " M";
+  if (m >= 0.001)return Math.round(m*1000).toLocaleString("en-US") + " K";
+  return "<1 K";
+}
+function fmtLat(lat){ return Math.abs(lat).toFixed(1) + "\u00B0" + (lat >= 0 ? "N" : "S"); }
+function fmtLon(lon){ return Math.abs(lon).toFixed(1) + "\u00B0" + (lon >= 0 ? "E" : "W"); }
+
+/* ----------------------------------------------------------------
+   2 · DATA LOADING  (world-atlas topojson, multi-CDN fallback)
+   ---------------------------------------------------------------- */
+const DATA_URLS = [
+  "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json",
+  "https://unpkg.com/world-atlas@2.0.2/countries-50m.json",
+  "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json"
+];
+async function fetchTopo(){
+  let lastErr = null;
+  for (const url of DATA_URLS){
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error("download failed");
+}
+async function ensureTopo(){
+  if (window.topojson) return window.topojson;
+  for (let i = 0; i < 30; i++){
+    await new Promise(r => setTimeout(r, 100));
+    if (window.topojson) return window.topojson;
+  }
+  const m = await import("https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm");
+  return m.topojson || m.default || m;
+}
+
+/* ----------------------------------------------------------------
+   3 · GEOMETRY PREP  (unwrap rings across the antimeridian, bboxes)
+   ---------------------------------------------------------------- */
+function unwrapRing(raw){
+  const out = [];
+  let prev = null;
+  for (let i = 0; i < raw.length; i++){
+    let lng = raw[i][0], lat = raw[i][1];
+    if (prev !== null){
+      while (lng - prev > 180)  lng -= 360;
+      while (lng - prev < -180) lng += 360;
+    }
+    out.push([lng, lat]);
+    prev = lng;
+  }
+  return out;
+}
+function prepFeatures(geojson){
+  const feats = [];
+  for (const f of geojson.features){
+    if (!f.geometry) continue;
+    let polys = [];
+    if (f.geometry.type === "Polygon") polys = [f.geometry.coordinates];
+    else if (f.geometry.type === "MultiPolygon") polys = f.geometry.coordinates;
+    const rings = [];
+    for (const p of polys){
+      if (!Array.isArray(p) || !p.length) continue;
+      for (const ring of p){
+        if (!Array.isArray(ring) || ring.length < 4) continue;
+        const r = unwrapRing(ring);
+        if (r.length > 3) rings.push(r);
+      }
+    }
+    if (!rings.length) continue;
+    let minLon = 1e9, maxLon = -1e9, minLat = 1e9, maxLat = -1e9;
+    for (const r of rings) for (const pt of r){
+      if (pt[0] < minLon) minLon = pt[0];
+      if (pt[0] > maxLon) maxLon = pt[0];
+      if (pt[1] < minLat) minLat = pt[1];
+      if (pt[1] > maxLat) maxLat = pt[1];
+    }
+    let largest = rings[0];
+    for (const r of rings) if (r.length > largest.length) largest = r;
+    const mids = largest.map(p => p[0]).sort((a,b) => a-b);
+    let sl = 0; for (const p of largest) sl += p[1];
+    feats.push({
+      name: f.properties ? f.properties.name : "Unknown",
+      id: f.id,
+      rings,
+      bbox: { minLon, maxLon, minLat, maxLat },
+      medLon: mids[mids.length >> 1],
+      medLat: sl / largest.length
+    });
+  }
+  return feats;
+}
+function pip(lng, lat, rings){
+  let inside = false;
+  for (const ring of rings){
+    const n = ring.length;
+    for (let i = 0, j = n - 1; i < n; j = i++){
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if (((yi > lat) !== (yj > lat)) &&
+          (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+  }
+  return inside;
+}
+function pickFeature(lon, lat){
+  const lons = [lon, lon - 360, lon + 360];
+  for (const f of feats){
+    const b = f.bbox;
+    if (lat < b.minLat - 0.5 || lat > b.maxLat + 0.5) continue;
+    for (const L of lons){
+      if (L < b.minLon - 0.5 || L > b.maxLon + 0.5) continue;
+      if (pip(L, lat, f.rings)) return f;
+    }
+  }
+  return null;
+}
+
+/* ----------------------------------------------------------------
+   4 · TEXTURES  (equirect canvas: black ocean, dark land, white
+        glowing borders, drawn with antimeridian wrap)
+   ---------------------------------------------------------------- */
+const TEX_W = Math.max(2048, Math.min(4096, innerWidth > 1100 ? 4096 : 2048));
+const TEX_H = TEX_W / 2;
+const lonX = lon => (lon + 180) / 360 * TEX_W;
+const latY = lat => (90 - lat) / 180 * TEX_H;
+
+function tracePath(ctx, list, ringsOf, off){
+  ctx.beginPath();
+  for (const f of list){
+    for (const r of ringsOf(f)){
+      for (let i = 0; i < r.length; i++){
+        const x = lonX(r[i][0]) + off, y = latY(r[i][1]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+    }
+  }
+}
+function globalOffsets(){
+  const offs = [0];
+  for (const f of feats) if (f.bbox.maxLon > 179.5){ offs.push(-TEX_W); break; }
+  for (const f of feats) if (f.bbox.minLon < -179.5){ offs.push(TEX_W); break; }
+  return offs;
+}
+function buildBaseTexture(){
+  const c = document.createElement("canvas");
+  c.width = TEX_W; c.height = TEX_H;
+  const x = c.getContext("2d", { alpha:false });
+  x.fillStyle = "#000";
+  x.fillRect(0, 0, TEX_W, TEX_H);
+  /* faint graticule (ocean only — land is painted over it) */
+  x.strokeStyle = "rgba(110,170,255,0.05)";
+  x.lineWidth = 1;
+  for (let lo = -180; lo <= 180; lo += 15){
+    x.beginPath(); x.moveTo(lonX(lo), 0); x.lineTo(lonX(lo), TEX_H); x.stroke();
+  }
+  for (let la = -90; la <= 90; la += 15){
+    x.beginPath(); x.moveTo(0, latY(la)); x.lineTo(TEX_W, latY(la)); x.stroke();
+  }
+  const offs = globalOffsets();
+  /* land mass — very dark grey */
+  for (const off of offs){
+    tracePath(x, feats, f => f.rings, off);
+    x.fillStyle = "#1a1d23";
+    x.fill("evenodd");
+  }
+  /* white border lines with layered glow */
+  x.lineJoin = "round"; x.lineCap = "round";
+  const passes = [
+    [6.5, "rgba(90,180,255,0.10)"],
+    [3.2, "rgba(175,228,255,0.34)"],
+    [1.4, "rgba(255,255,255,0.95)"]
+  ];
+  for (const [w, s] of passes){
+    x.lineWidth = w; x.strokeStyle = s;
+    for (const off of offs){ tracePath(x, feats, f => f.rings, off); x.stroke(); }
+  }
+  return c;
+}
+let hlCanvas = null, hlCtx = null;
+function makeHighlightCanvas(){
+  hlCanvas = document.createElement("canvas");
+  hlCanvas.width = TEX_W; hlCanvas.height = TEX_H;
+  hlCtx = hlCanvas.getContext("2d");
+}
+function drawSelection(f){
+  if (!hlCtx) return;
+  hlCtx.clearRect(0, 0, TEX_W, TEX_H);
+  if (!f) { if (hlTex) hlTex.needsUpdate = true; return; }
+  const offs = [0];
+  if (f.bbox.maxLon > 179.5) offs.push(-TEX_W);
+  if (f.bbox.minLon < -179.5) offs.push(TEX_W);
+  const trace = off => {
+    hlCtx.beginPath();
+    for (const r of f.rings){
+      for (let i = 0; i < r.length; i++){
+        const x = lonX(r[i][0]) + off, y = latY(r[i][1]);
+        if (i === 0) hlCtx.moveTo(x, y); else hlCtx.lineTo(x, y);
+      }
+    }
+  };
+  for (const off of offs){ trace(off); hlCtx.fillStyle = "rgba(64,205,255,0.17)"; hlCtx.fill("evenodd"); }
+  hlCtx.lineJoin = "round"; hlCtx.lineCap = "round";
+  const passes = [[8, "rgba(70,190,255,0.25)"], [2.4, "rgba(200,245,255,0.95)"]];
+  for (const [w, s] of passes){
+    hlCtx.lineWidth = w; hlCtx.strokeStyle = s;
+    for (const off of offs){ trace(off); hlCtx.stroke(); }
+  }
+  hlTex.needsUpdate = true;
+}
+
+/* ----------------------------------------------------------------
+   5 · THREE.JS SCENE
+   ---------------------------------------------------------------- */
+let feats = [];
+let renderer, scene, camera, gY, gX, globe, hlMesh, hlTex, marker, ray;
+let stars1, stars2;
+
+function latLonToVec3(lon, lat){
+  const phi = (lon + 180) * DEG;
+  const th  = (90 - lat) * DEG;
+  return new THREE.Vector3(
+    -Math.cos(phi) * Math.sin(th),
+     Math.cos(th),
+     Math.sin(phi) * Math.sin(th)
+  );
+}
+function fromLocal(v){
+  const r = v.length() || 1;
+  const lat = Math.asin(clamp(v.y / r, -1, 1)) / DEG;
+  const phi = Math.atan2(v.z, -v.x) / DEG;
+  const lon = ((phi - 180) % 360 + 540) % 360 - 180;
+  return { lon, lat };
+}
+function glowTexture(rgb, size){
+  size = size || 64;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const x = c.getContext("2d");
+  const g = x.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  g.addColorStop(0, "rgba(255,255,255,0.9)");
+  g.addColorStop(0.3, "rgba(" + rgb + ",0.5)");
+  g.addColorStop(1, "rgba(" + rgb + ",0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
+}
+function ringTexture(){
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d");
+  x.translate(64, 64);
+  x.strokeStyle = "rgba(150,235,255,0.28)"; x.lineWidth = 5;
+  x.beginPath(); x.arc(0, 0, 52, 0, Math.PI*2); x.stroke();
+  x.strokeStyle = "rgba(200,245,255,0.95)"; x.lineWidth = 4;
+  x.beginPath(); x.arc(0, 0, 40, 0, Math.PI*2); x.stroke();
+  x.fillStyle = "rgba(255,255,255,0.95)";
+  x.beginPath(); x.arc(0, 0, 7, 0, Math.PI*2); x.fill();
+  const t = new THREE.CanvasTexture(c);
+  return t;
+}
+function fresnelMat(hex, intensity, backside){
+  return new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(hex) }, uI: { value: intensity } },
+    vertexShader: `
+      varying vec3 vN; varying vec3 vP;
+      void main(){
+        vN = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vP = mv.xyz;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor; uniform float uI;
+      varying vec3 vN; varying vec3 vP;
+      void main(){
+        float rim = pow(1.0 - abs(dot(normalize(vN), normalize(-vP))), 3.0);
+        gl_FragColor = vec4(uColor * rim * uI, rim * uI);
+      }`,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: backside ? THREE.BackSide : THREE.FrontSide
+  });
+}
+function starField(count, rMin, rMax, size, color, opacity){
+  const pos = new Float32Array(count * 3);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < count; i++){
+    v.randomDirection().multiplyScalar(rMin + Math.random() * (rMax - rMin));
+    pos[i*3] = v.x; pos[i*3+1] = v.y; pos[i*3+2] = v.z;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({
+    size, color, transparent: true, opacity, depthWrite: false, sizeAttenuation: true
+  });
+  return new THREE.Points(g, m);
+}
+function buildSat(color, colorRGB){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.045, 0.03, 0.03),
+    new THREE.MeshPhongMaterial({ color: 0x5a6675, emissive: 0x0b0f14, shininess: 90, specular: 0x99d9ff })
+  );
+  const panMat = new THREE.MeshPhongMaterial({ color: 0x14304f, emissive: 0x091526, shininess: 40, specular: 0x3a7ab5 });
+  const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.006, 0.046), panMat);
+  p1.position.x = 0.096;
+  const p2 = p1.clone();
+  p2.position.x = -0.096;
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture(colorRGB),
+    blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false
+  }));
+  glow.scale.set(0.17, 0.17, 1);
+  g.add(body, p1, p2, glow);
+  return { g, body, glow };
+}
+const SAT_DEFS = [
+  { r: 1.38, speed:  0.34, color: 0x59d7ff, rgb: "89,215,255" },
+  { r: 1.52, speed: -0.24, color: 0x59d7ff, rgb: "89,215,255" },
+  { r: 1.60, speed:  0.18, color: 0xffb454, rgb: "255,180,84" },
+  { r: 1.70, speed:  0.28, color: 0x59d7ff, rgb: "89,215,255" },
+  { r: 1.80, speed: -0.15, color: 0x8ef5d2, rgb: "142,245,210" },
+  { r: 1.92, speed:  0.21, color: 0x59d7ff, rgb: "89,215,255" },
+  { r: 2.05, speed: -0.11, color: 0xb8c6ff, rgb: "184,198,255" }
+];
+let sats = [];
+function buildSatellites(){
+  const axis = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3();
+  SAT_DEFS.forEach((def, idx) => {
+    axis.set(Math.random()*2-1, Math.random()*2-1, Math.random()*2-1);
+    if (axis.lengthSq() < 0.001) axis.set(0, 1, 0);
+    axis.normalize();
+    u.set(0, 1, 0).cross(axis);
+    if (u.lengthSq() < 0.01) u.set(1, 0, 0);
+    u.normalize();
+    v.copy(axis).cross(u).normalize();
+    const built = buildSat(def.color, def.rgb);
+    scene.add(built.g);
+    /* dotted orbit path */
+    const N = 150;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++){
+      const a = i / N * Math.PI * 2;
+      const c = Math.cos(a) * def.r, s = Math.sin(a) * def.r;
+      pos[i*3]   = (u.x*c + v.x*s);
+      pos[i*3+1] = (u.y*c + v.y*s);
+      pos[i*3+2] = (u.z*c + v.z*s);
+    }
+    const og = new THREE.BufferGeometry();
+    og.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const orbit = new THREE.Points(og, new THREE.PointsMaterial({
+      size: 0.016, color: def.color, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+    }));
+    scene.add(orbit);
+    /* downlink line + ground ping */
+    const lg = new THREE.BufferGeometry();
+    const lp = new Float32Array(6);
+    lg.setAttribute("position", new THREE.BufferAttribute(lp, 3));
+    const line = new THREE.Line(lg, new THREE.LineBasicMaterial({
+      color: def.color, transparent: true, opacity: 0.15
+    }));
+    line.frustumCulled = false;
+    scene.add(line);
+    const ping = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTexture(def.rgb),
+      blending: THREE.AdditiveBlending, transparent: true, opacity: 0.5, depthWrite: false
+    }));
+    ping.scale.set(0.07, 0.07, 1);
+    ping.frustumCulled = false;
+    scene.add(ping);
+    sats.push({
+      def, u, v, built, line, lp, ping,
+      a: Math.random() * Math.PI * 2,
+      phase: idx * 0.9
+    });
+  });
+}
+function buildScene(){
+  const canvas = $("scene");
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000000);
+  camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 400);
+  camera.position.set(0, 0, 3.1);
+
+  scene.add(new THREE.AmbientLight(0x8899bb, 0.75));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.5);
+  dl.position.set(4, 6, 8);
+  scene.add(dl);
+
+  gY = new THREE.Group();
+  gX = new THREE.Group();
+  scene.add(gY); gY.add(gX);
+
+  /* globe */
+  const baseTex = new THREE.CanvasTexture(buildBaseTexture());
+  baseTex.colorSpace = THREE.SRGBColorSpace;
+  baseTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  globe = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 96, 64),
+    new THREE.MeshBasicMaterial({ map: baseTex })
+  );
+  gX.add(globe);
+
+  /* selection highlight layer */
+  makeHighlightCanvas();
+  hlTex = new THREE.CanvasTexture(hlCanvas);
+  hlTex.colorSpace = THREE.SRGBColorSpace;
+  hlTex.anisotropy = baseTex.anisotropy;
+  hlMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1.004, 96, 64),
+    new THREE.MeshBasicMaterial({ map: hlTex, transparent: true, depthWrite: false })
+  );
+  gX.add(hlMesh);
+
+  /* selection marker */
+  marker = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: ringTexture(),
+    blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, depthTest: false
+  }));
+  marker.scale.set(0.16, 0.16, 1);
+  marker.visible = false;
+  marker.renderOrder = 5;
+  globe.add(marker);
+
+  /* atmosphere halo + rim */
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(1.22, 64, 48), fresnelMat(0x3d9fff, 1.15, true));
+  const rim  = new THREE.Mesh(new THREE.SphereGeometry(1.002, 64, 48), fresnelMat(0xbfe8ff, 0.5, false));
+  scene.add(halo, rim);
+
+  /* soft earth glow */
+  const g1 = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture("61,159,255", 128),
+    blending: THREE.AdditiveBlending, transparent: true, opacity: 0.17, depthWrite: false
+  }));
+  g1.scale.set(6.4, 6.4, 1);
+  const g2 = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture("35,90,190", 128),
+    blending: THREE.AdditiveBlending, transparent: true, opacity: 0.08, depthWrite: false
+  }));
+  g2.scale.set(11, 11, 1);
+  scene.add(g1, g2);
+
+  /* star field */
+  stars1 = starField(1400, 45, 90, 0.5, 0x8fa8c8, 0.55);
+  stars2 = starField(350,  55, 100, 0.95, 0xffffff, 0.9);
+  scene.add(stars1, stars2);
+
+  buildSatellites();
+
+  ray = new THREE.Raycaster();
+}
+
+/* ----------------------------------------------------------------
+   6 · INTERACTION  (drag / pinch / wheel / hover / pick)
+   ---------------------------------------------------------------- */
+let rotY = -2.6, rotYT = 0.55, rotX = 0.12, rotXT = 0.12;
+let dist = 6.9,  distT = 3.05;
+let rotYCur = rotY, rotXCur = rotX, distCur = dist;
+let idle = 0, spin = 0;
+let selected = null;
+const cardEl = $("card");
+const tooltip = $("tooltip");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const pointers = new Map();
+let moved = 0, downT = 0, singleTap = false, pinchD0 = 0, pinchDist0 = 0;
+let hoverX = 0, hoverY = 0, wantHover = false, hoverFeat = null;
+
+function toNDC(cx, cy){
+  return new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
+}
+function canvasPtr(e){
+  const c = $("scene");
+  c.style.cursor = "grabbing";
+}
+$("scene").addEventListener("pointerdown", e => {
+  if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
+  try { $("scene").setPointerCapture(e.pointerId); } catch(err){}
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1){
+    moved = 0; downT = performance.now(); singleTap = true;
+    canvasPtr(e);
+  } else if (pointers.size === 2){
+    singleTap = false;
+    const [a, b] = [...pointers.values()];
+    pinchD0 = Math.hypot(a.x - b.x, a.y - b.y);
+    pinchDist0 = distT;
+  }
+  idle = 0;
+});
+$("scene").addEventListener("pointermove", e => {
+  if (!pointers.has(e.pointerId)){
+    if (e.pointerType === "mouse"){ hoverX = e.clientX; hoverY = e.clientY; wantHover = true; }
+    return;
+  }
+  const p = pointers.get(e.pointerId);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 1){
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (moved > 8) singleTap = false;
+    rotYT += dx * 0.0052;
+    rotXT = clamp(rotXT + dy * 0.0042, -1.15, 1.15);
+    idle = 0;
+  } else if (pointers.size === 2){
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchD0 > 0 && d > 0) distT = clamp(pinchDist0 * (pinchD0 / d), 1.9, 6.4);
+    pinchD0 = d;
+    idle = 0;
+  }
+});
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchD0 = 0;
+  if (pointers.size === 0){
+    $("scene").style.cursor = hoverFeat ? "pointer" : "grab";
+    if (singleTap && moved < 8 && performance.now() - downT < 600){
+      onPick(e.clientX, e.clientY);
+    }
+  }
+}
+$("scene").addEventListener("pointerup", endPointer);
+$("scene").addEventListener("pointercancel", endPointer);
+$("scene").addEventListener("wheel", e => {
+  e.preventDefault();
+  distT = clamp(distT * Math.exp(e.deltaY * 0.0012), 1.9, 6.4);
+  idle = 0;
+}, { passive: false });
+
+function onPick(cx, cy){
+  const ndc = toNDC(cx, cy);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObject(globe, false)[0];
+  if (!hit){ deselect(); return; }
+  globe.updateWorldMatrix(true, false);
+  const local = globe.worldToLocal(hit.point.clone());
+  const ll = fromLocal(local);
+  const f = pickFeature(ll.lon, ll.lat);
+  if (!f){ deselect(); return; }
+  select(f);
+}
+function select(f){
+  selected = f;
+  drawSelection(f);
+  const mp = latLonToVec3(f.medLon, f.medLat).multiplyScalar(1.008);
+  marker.position.copy(mp);
+  marker.visible = true;
+  const info = dataFor(f);
+  $("cName").textContent = info.name;
+  $("cFlag").textContent = flagEmoji(info.d ? info.d[0] : "");
+  const d = info.d;
+  $("cRegion").textContent = d ? d[4] : "Territory · Limited survey data";
+  $("sCap").textContent   = d ? d[1]  : "—";
+  $("sPop").textContent   = d ? fmtPop(d[2]) + " est." : "—";
+  $("sArea").textContent  = d ? (d[3] >= 1 ? Math.round(d[3]).toLocaleString("en-US") : d[3].toFixed(2)) + " km²" : "—";
+  $("sReg").textContent   = d ? d[4]  : "—";
+  $("sCur").textContent   = d ? d[5]  : "—";
+  $("sLang").textContent  = d ? d[6]  : "—";
+  $("sPhone").textContent = d ? d[7]  : "—";
+  $("sTld").textContent   = d ? (d[8] && d[8] !== "—" ? "." + d[8] : "—") : "—";
+  $("cIso").textContent   = d ? "ISO·3166 " + d[0] : "ISO·3166 —";
+  const showLon = ((f.medLon + 540) % 360) - 180;
+  $("cGrid").textContent  = "GRID " + fmtLat(f.medLat) + " · " + fmtLon(showLon);
+  cardEl.classList.add("open");
+  cardEl.setAttribute("aria-hidden", "false");
+  /* smooth focus tween toward the country */
+  const p = latLonToVec3(f.medLon, f.medLat);
+  rotXT = clamp(Math.atan2(p.y, p.z), -1.15, 1.15);
+  const ty = Math.atan2(-p.x, Math.hypot(p.y, p.z));
+  let d2 = ty - rotYT;
+  d2 = Math.atan2(Math.sin(d2), Math.cos(d2));
+  rotYT = rotYT + d2;
+  if (distT < 2.2) distT = 2.6;
+  idle = 0;
+}
+function deselect(){
+  if (!marker) return;
+  if (!selected && !cardEl.classList.contains("open")) return;
+  selected = null;
+  drawSelection(null);
+  marker.visible = false;
+  cardEl.classList.remove("open");
+  cardEl.setAttribute("aria-hidden", "true");
+}
+$("cClose").addEventListener("click", deselect);
+$("errRetry").addEventListener("click", () => location.reload());
+addEventListener("keydown", e => { if (e.key === "Escape") deselect(); });
+
+function doHover(){
+  ray.setFromCamera(toNDC(hoverX, hoverY), camera);
+  const hit = ray.intersectObject(globe, false)[0];
+  if (!hit){
+    hoverFeat = null;
+    tooltip.classList.remove("on");
+    $("coordLat").textContent = "LAT \u00B7\u00B7\u00B7";
+    $("coordLon").textContent = "LON \u00B7\u00B7\u00B7";
+    if (pointers.size === 0) $("scene").style.cursor = "grab";
+    return;
+  }
+  globe.updateWorldMatrix(true, false);
+  const ll = fromLocal(globe.worldToLocal(hit.point.clone()));
+  const f = pickFeature(ll.lon, ll.lat);
+  hoverFeat = f;
+  if (f){
+    tooltip.textContent = dataFor(f).name;
+    tooltip.style.left = hoverX + "px";
+    tooltip.style.top = hoverY + "px";
+    tooltip.classList.add("on");
+  } else {
+    tooltip.classList.remove("on");
+  }
+  $("coordLat").textContent = "LAT " + fmtLat(ll.lat);
+  $("coordLon").textContent = "LON " + fmtLon(ll.lon);
+  if (pointers.size === 0) $("scene").style.cursor = f ? "pointer" : "grab";
+}
+
+/* ----------------------------------------------------------------
+   7 · MAIN LOOP
+   ---------------------------------------------------------------- */
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  idle += dt;
+  const spinT = (idle > 4 && !reducedMotion && !cardEl.classList.contains("open")) ? 1 : 0;
+  spin += (spinT - spin) * (1 - Math.exp(-dt * 0.8));
+  rotYT += 0.05 * spin * dt;
+
+  const k = 1 - Math.exp(-dt * 10);
+  rotYCur += (rotYT - rotYCur) * k;
+  rotXCur += (rotXT - rotXCur) * k;
+  distCur += (distT - distCur) * (1 - Math.exp(-dt * 5));
+  gY.rotation.y = rotYCur;
+  gX.rotation.x = rotXCur;
+  camera.position.z = distCur;
+
+  /* satellites */
+  for (const s of sats){
+    s.a += s.def.speed * dt;
+    const c = Math.cos(s.a) * s.def.r, sn = Math.sin(s.a) * s.def.r;
+    const px = s.u.x*c + s.v.x*sn, py = s.u.y*c + s.v.y*sn, pz = s.u.z*c + s.v.z*sn;
+    s.built.g.position.set(px, py, pz);
+    s.built.body.rotation.y += dt * 0.6;
+    s.built.body.rotation.x += dt * 0.23;
+    const pu = 0.155 * (1 + 0.22 * Math.sin(t * 3 + s.phase));
+    s.built.glow.scale.set(pu, pu, 1);
+    const inv = 1 / Math.sqrt(px*px + py*py + pz*pz);
+    s.lp[0] = px; s.lp[1] = py; s.lp[2] = pz;
+    s.lp[3] = px * inv; s.lp[4] = py * inv; s.lp[5] = pz * inv;
+    s.line.geometry.attributes.position.needsUpdate = true;
+    s.ping.position.set(px * inv, py * inv, pz * inv);
+    s.ping.material.opacity = 0.32 + 0.25 * (0.5 + 0.5 * Math.sin(t * 2.2 + s.phase));
+  }
+
+  /* ambient life */
+  stars1.rotation.y += dt * 0.0016;
+  stars2.rotation.y -= dt * 0.0011;
+  stars2.material.opacity = 0.72 + 0.22 * Math.sin(t * 1.6);
+  if (marker.visible){
+    const m = 0.15 + 0.045 * Math.sin(t * 2.6);
+    marker.scale.set(m + 0.06, m + 0.06, 1);
+  }
+  if (selected){
+    hlMesh.material.opacity = 0.82 + 0.18 * Math.sin(t * 2.6);
+  }
+  $("coordRange").textContent = "RANGE " + (distCur / 1.0).toFixed(1) + "×";
+
+  if (wantHover && pointers.size === 0){
+    wantHover = false;
+    doHover();
+  }
+
+  renderer.render(scene, camera);
+  if (!window.__booted){
+    window.__booted = true;
+    clearTimeout(window.__bootTimer);
+    document.getElementById("err").classList.remove("show");
+    $("loader").classList.add("hide");
+  }
+}
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ----------------------------------------------------------------
+   8 · BOOT
+   ---------------------------------------------------------------- */
+function setStep(txt, pct){
+  $("loadStep").textContent = txt;
+  $("loadFill").style.width = pct + "%";
+}
+async function main(){
+  setStep("Acquiring border topology", 10);
+  const topo = await fetchTopo();
+  setStep("Decoding country geometry", 42);
+  const tj = await ensureTopo();
+  const geo = tj.feature(topo, topo.objects.countries);
+  feats = prepFeatures(geo);
+  if (!feats.length) throw new Error("empty topology");
+  setStep("Painting continents", 68);
+  await tick();
+  buildScene();
+  setStep("Deploying satellites", 92);
+  await tick();
+  $("stLand").textContent = feats.length;
+  $("stSat").textContent = SAT_DEFS.length;
+  setStep("Live", 100);
+  animate();
+}
+main().catch(err => {
+  console.error(err);
+  window.__showError("Orbital grid failure: " + (err && err.message ? err.message : "unknown error") +
+    ". The border-data servers may be unreachable — check your connection and retry.");
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,2304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dawn Ascent — a hand-drawn 2D anime scene</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; background: #060807; height: 100%;
+    overflow: hidden; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+  #stage {
+    position: relative; background: #000; box-shadow: 0 0 80px rgba(0,0,0,0.9);
+    line-height: 0;
+  }
+  #stage svg { display: block; width: 100%; height: 100%; }
+  #grain {
+    position: absolute; inset: 0; pointer-events: none;
+    opacity: 0.55; mix-blend-mode: overlay;
+  }
+  #ui {
+    position: absolute; right: 14px; bottom: 12px; display: flex; gap: 8px;
+    transition: opacity .6s ease; line-height: 1;
+  }
+  .ctl {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid rgba(240,228,196,0.5); background: rgba(20,24,20,0.45);
+    color: #f0e4c4; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(2px); transition: background .25s, opacity .25s;
+    user-select: none;
+  }
+  .ctl:hover { background: rgba(64,72,56,0.6); }
+  #hint {
+    position: absolute; left: 16px; bottom: 14px; color: rgba(240,228,196,0.55);
+    font-size: 11px; letter-spacing: 0.14em; line-height: 1;
+    transition: opacity 1.2s ease; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="grain"></div>
+    <div id="hint">CLICK TO PAUSE</div>
+    <div id="ui">
+      <div class="ctl" id="pp" title="pause / play">&#10074;&#10074;</div>
+      <div class="ctl" id="rp" title="replay">&#8635;</div>
+      <div class="ctl" id="snd" title="sound" style="opacity:0.55">&#9834;</div>
+    </div>
+  </div>
+<script>
+/* ============ util.js : deterministic RNG, SVG helpers, path & color tools ============ */
+'use strict';
+const NS = 'http://www.w3.org/2000/svg';
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let _seed = 0x5EED0721;
+let _R = mulberry32(_seed);
+let DEFS = null; /* shared <defs> node, assigned by main */
+const rr = (a, b) => a + (b - a) * _R();
+const ri = (a, b) => Math.floor(rr(a, b + 0.999));
+const pick = arr => arr[Math.floor(_R() * arr.length) % arr.length];
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const TAU = Math.PI * 2;
+
+const EZ = {
+  linear: t => t,
+  i2: t => t * t,
+  i3: t => t * t * t,
+  o2: t => 1 - (1 - t) * (1 - t),
+  o3: t => 1 - Math.pow(1 - t, 3),
+  io2: t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
+  io3: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  sm: t => t * t * (3 - 2 * t),
+  back: t => { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
+};
+
+/* deterministic per-index hash (for shake / stepped randoms at runtime) */
+function hash1(n) { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+function hash2(n) { const s = Math.sin(n * 269.5 + 183.3) * 24634.6345; return s - Math.floor(s); }
+
+/* ---------- SVG ---------- */
+function el(name, attrs, parent) {
+  const e = document.createElementNS(NS, name);
+  if (attrs) for (const k in attrs) { const v = attrs[k]; if (v == null) continue; e.setAttribute(k, v); }
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function gp(parent, attrs) { return el('g', attrs || {}, parent); }
+function fmt(v) { return Math.round(v * 10) / 10; }
+function path(parent, d, attrs) { return el('path', Object.assign({ d }, attrs || {}), parent); }
+
+/* ---------- path builders ---------- */
+/* closed catmull-rom -> cubic bezier (organic hand-painted blobs) */
+function smoothClosed(pts) {
+  const n = pts.length;
+  let d = 'M ' + fmt(pts[0][0]) + ' ' + fmt(pts[0][1]);
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ' C ' + fmt(c1x) + ' ' + fmt(c1y) + ', ' + fmt(c2x) + ' ' + fmt(c2y) + ', ' + fmt(p2[0]) + ' ' + fmt(p2[1]);
+  }
+  return d + ' Z';
+}
+/* irregular organic blob */
+function blobD(cx, cy, rx, ry, o) {
+  o = o || {};
+  const n = o.n || 9, irr = o.irr == null ? 0.32 : o.irr, rot = o.rot || 0;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = rot + i / n * TAU;
+    const k = 1 + (_R() * 2 - 1) * irr;
+    pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]);
+  }
+  return smoothClosed(pts);
+}
+/* tapered open ribbon along points (trail beams, rust streaks) */
+function ribbonD(pts, w0, w1) {
+  const n = pts.length;
+  const L = [], Rt = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    let dx = b[0] - a[0], dy = b[1] - a[1];
+    const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
+    const w = lerp(w0, w1, i / (n - 1)) / 2;
+    L.push([pts[i][0] - dy * w, pts[i][1] + dx * w]);
+    Rt.push([pts[i][0] + dy * w, pts[i][1] - dx * w]);
+  }
+  let d = 'M ' + fmt(L[0][0]) + ' ' + fmt(L[0][1]);
+  for (let i = 1; i < n; i++) d += ' L ' + fmt(L[i][0]) + ' ' + fmt(L[i][1]);
+  for (let i = n - 1; i >= 0; i--) d += ' L ' + fmt(Rt[i][0]) + ' ' + fmt(Rt[i][1]);
+  return d + ' Z';
+}
+/* grass blade: filled tapered curved blade. lean = px tip offset (+x) */
+function bladeD(x, y, len, lean, w) {
+  const tx = x + lean, ty = y - len;
+  const c1x = x + lean * 0.15 + w * 0.4, c1y = y - len * 0.42;
+  const c2x = x + lean * 0.75 - w * 0.2, c2y = y - len * 0.75;
+  return 'M ' + fmt(x - w) + ' ' + fmt(y) +
+    ' Q ' + fmt(c1x) + ' ' + fmt(c1y) + ' ' + fmt(tx) + ' ' + fmt(ty) +
+    ' Q ' + fmt(c2x) + ' ' + fmt(c2y) + ' ' + fmt(x + w) + ' ' + fmt(y) + ' Z';
+}
+/* wavy stem/vine path */
+function vineD(x, y, dx, dy, waves, amp) {
+  let d = 'M ' + fmt(x) + ' ' + fmt(y);
+  const seg = 1 / waves;
+  for (let i = 1; i <= waves; i++) {
+    const t = i * seg;
+    const mx = x + dx * (t - seg / 2), my = y + dy * (t - seg / 2);
+    const nx = -dy, ny = dx;
+    d += ' Q ' + fmt(mx + nx * amp) + ' ' + fmt(my + ny * amp) + ' ' + fmt(x + dx * t) + ' ' + fmt(y + dy * t);
+  }
+  return d;
+}
+/* small leaf shape centered at 0,0 pointing up, size s */
+function leafD(s) {
+  return 'M 0 ' + fmt(-s) + ' Q ' + fmt(s * 0.72) + ' ' + fmt(-s * 0.35) + ' ' + fmt(s * 0.12) + ' ' + fmt(s * 0.92) +
+    ' Q ' + fmt(-s * 0.62) + ' ' + fmt(s * 0.28) + ' 0 ' + fmt(-s) + ' Z';
+}
+
+/* ---------- color ---------- */
+function hexRgb(h) {
+  h = h.replace('#', '');
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function rgbHex(r, g, b) {
+  const c = v => ('0' + Math.round(clamp(v, 0, 255)).toString(16)).slice(-2);
+  return '#' + c(r) + c(g) + c(b);
+}
+function mix(c1, c2, t) {
+  const a = hexRgb(c1), b = hexRgb(c2);
+  return rgbHex(lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t));
+}
+function shade(c, amt) { /* amt -1..1 : darker..lighter */
+  return amt < 0 ? mix(c, '#1a1712', -amt) : mix(c, '#fff8e8', amt);
+}
+function rgba(c, a) { const v = hexRgb(c); return 'rgba(' + v[0] + ',' + v[1] + ',' + v[2] + ',' + a + ')'; }
+
+/* ============ bg.js : hand-painted gouache forest & light ============ */
+'use strict';
+
+const PAL = {
+  skyTop: '#6fa3b5', sky2: '#a9c6bd', sky3: '#e3d6a4', sky4: '#f7e7b4', sky5: '#fff3cf',
+  sun: '#fff6d8', sunWarm: '#ffe3a0',
+  farTree: '#93af9e', farTree2: '#a9bfa9',
+  leafD: '#42604a', leaf: '#5d7f5c', leafL: '#87a568', leafSun: '#c3c483',
+  trunk: '#4c4336', trunkL: '#6e5d49', trunkD: '#3a3428',
+  grassD: '#43603e', grass: '#5f8050', grassL: '#94a860', grassSun: '#c9c877',
+  soil: '#4e4636', soilL: '#6b5c45',
+  mist: '#f2efdc', mistWarm: '#fdf3d5',
+  ray: '#fff3cd',
+  ink: '#3a332b',
+  glowA: '#ffd98c', glowB: '#ffb45e'
+};
+
+let _uid = 0;
+function uid(p) { return (p || 'u') + (_uid++); }
+
+function linGrad(defs, stops, x1, y1, x2, y2) {
+  const id = uid('lg');
+  const lg = el('linearGradient', { id, x1: x1 == null ? 0 : x1, y1: y1 == null ? 0 : y1, x2: x2 == null ? 0 : x2, y2: y2 == null ? 1 : y2 }, defs);
+  stops.forEach(s => el('stop', { offset: s[0], 'stop-color': s[1], 'stop-opacity': s[2] == null ? 1 : s[2] }, lg));
+  return id;
+}
+function radGrad(defs, stops, cx, cy, r) {
+  const id = uid('rg');
+  const rg = el('radialGradient', { id, cx: cx == null ? .5 : cx, cy: cy == null ? .5 : cy, r: r == null ? .5 : r }, defs);
+  stops.forEach(s => el('stop', { offset: s[0], 'stop-color': s[1], 'stop-opacity': s[2] == null ? 1 : s[2] }, rg));
+  return id;
+}
+
+/* ---------------- sky & light ---------------- */
+function sky(parent, defs, stops) {
+  const id = linGrad(defs, stops);
+  return el('rect', { x: -40, y: -40, width: 2000, height: 1160, fill: 'url(#' + id + ')' }, parent);
+}
+function sunGlow(parent, defs, cx, cy, r, c1, c2, a2) {
+  const id = radGrad(defs, [[0, c1, 1], [0.42, c2, a2 == null ? 0.55 : a2], [0.75, c2, (a2 == null ? 0.55 : a2) * 0.35], [1, c2, 0]], .5, .5, .5);
+  return el('ellipse', { cx, cy, rx: r, ry: r * 0.92, fill: 'url(#' + id + ')' }, parent);
+}
+
+/* god-ray shafts through canopy */
+function rays(parent, o) {
+  const g = gp(parent, { filter: 'url(#b8)', style: 'mix-blend-mode:screen' });
+  const items = [];
+  const n = o.n || 5;
+  for (let i = 0; i < n; i++) {
+    const a = o.ang + rr(-0.15, 0.15);
+    const w = rr(o.w * 0.45, o.w * 1.5);
+    const len = o.len * rr(0.55, 1.15);
+    const x1 = o.cx + rr(-o.spread, o.spread), y1 = o.cy + rr(-30, 30);
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const px = -dy, py = dx;
+    const wEnd = w * rr(2.0, 3.0);
+    const d = 'M ' + fmt(x1 - px * w / 2) + ' ' + fmt(y1 - py * w / 2) +
+      ' L ' + fmt(x1 + px * w / 2) + ' ' + fmt(y1 + py * w / 2) +
+      ' L ' + fmt(x1 + dx * len + px * wEnd / 2) + ' ' + fmt(y1 + dy * len + py * wEnd / 2) +
+      ' L ' + fmt(x1 + dx * len - px * wEnd / 2) + ' ' + fmt(y1 + dy * len - py * wEnd / 2) + ' Z';
+    const p = path(g, d, { fill: o.c || PAL.ray, opacity: rr(0.05, 0.13) });
+    items.push(p);
+  }
+  g.__shimmer = items;
+  return g;
+}
+
+/* ---------------- trees ---------------- */
+/* distant hazy tree mass (no detail) */
+function farTrees(parent, y, h, c) {
+  const g = gp(parent, {});
+  let x = -60;
+  while (x < 1990) {
+    const w = rr(120, 300);
+    const th = h * rr(0.55, 1.15);
+    path(g, blobD(x + w / 2, y - th * 0.35, w * 0.62, th * 0.72, { irr: 0.42, n: 8 }), { fill: c, opacity: rr(0.75, 1) });
+    x += w * rr(0.55, 0.8);
+  }
+  return g;
+}
+/* mid-ground tree: trunk + canopy blob cluster + dabs */
+function treeMid(parent, o) {
+  const g = gp(parent, {});
+  const x = o.x, by = o.baseY, h = o.h;
+  const tw = o.tw || h * 0.07;
+  const lean = rr(-0.05, 0.09);
+  const topx = x + lean * h * 0.6;
+  path(g, 'M ' + fmt(x - tw / 2) + ' ' + fmt(by) +
+    ' Q ' + fmt(x - tw * 0.28 + lean * h * 0.2) + ' ' + fmt(by - h * 0.5) + ' ' + fmt(topx - tw * 0.2) + ' ' + fmt(by - h * 0.8) +
+    ' L ' + fmt(topx + tw * 0.36) + ' ' + fmt(by - h * 0.79) +
+    ' Q ' + fmt(x + tw * 0.6) + ' ' + fmt(by - h * 0.42) + ' ' + fmt(x + tw / 2) + ' ' + fmt(by) + ' Z',
+    { fill: o.trunk || PAL.trunk });
+  /* root flare */
+  path(g, blobD(x, by - 4, tw * 1.5, tw * 0.5, { irr: 0.5, n: 7 }), { fill: o.trunkD || PAL.trunkD, opacity: 0.7 });
+  /* branches */
+  for (let i = 0; i < 3; i++) {
+    const bY = by - h * rr(0.55, 0.8), dir = _R() < 0.5 ? -1 : 1;
+    path(g, 'M ' + fmt(x) + ' ' + fmt(bY) + ' Q ' + fmt(x + dir * h * 0.12) + ' ' + fmt(bY - h * 0.06) + ' ' + fmt(x + dir * h * 0.22) + ' ' + fmt(bY - h * 0.12),
+      { stroke: o.trunk || PAL.trunk, 'stroke-width': fmt(tw * 0.3), fill: 'none', 'stroke-linecap': 'round' });
+  }
+  /* canopy: overlapping mass, darker interior, lit top */
+  const blobs = ri(5, 7);
+  for (let i = 0; i < blobs; i++) {
+    const bx = x + rr(-h * 0.42, h * 0.44), byy = by - h * rr(0.86, 1.14), br = h * rr(0.2, 0.36);
+    path(g, blobD(bx, byy, br * 1.25, br * 0.85, { irr: 0.45 }), { fill: o.leafD || PAL.leafD });
+  }
+  for (let i = 0; i < blobs; i++) {
+    const bx = x + rr(-h * 0.38, h * 0.4), byy = by - h * rr(0.88, 1.1), br = h * rr(0.16, 0.3);
+    path(g, blobD(bx, byy, br * 1.2, br * 0.82, { irr: 0.45 }), { fill: o.leaf || PAL.leaf, opacity: 0.95 });
+  }
+  /* under-canopy shadow dabs */
+  for (let i = 0; i < 6; i++) {
+    const bx = x + rr(-h * 0.42, h * 0.42), byy = by - h * rr(0.8, 0.95);
+    path(g, blobD(bx, byy, rr(8, 18), rr(4, 9), { irr: 0.55, n: 6 }), { fill: shade(o.leafD || PAL.leafD, -0.25), opacity: rr(0.4, 0.75) });
+  }
+  /* painted dabs: shadow side then sun side */
+  for (let i = 0; i < 9; i++) {
+    const bx = x + rr(-h * 0.5, h * 0.5), byy = by - h * rr(0.84, 1.16);
+    path(g, blobD(bx, byy, rr(5, 13), rr(3, 8), { irr: 0.55, n: 6 }), { fill: o.leafL || PAL.leafL, opacity: rr(0.25, 0.55) });
+  }
+  for (let i = 0; i < 6; i++) {
+    const bx = x + rr(0, h * 0.5), byy = by - h * rr(0.9, 1.12);
+    path(g, blobD(bx, byy, rr(4, 10), rr(2, 6), { irr: 0.55, n: 6 }), { fill: o.leafSun || PAL.leafSun, opacity: rr(0.3, 0.6) });
+  }
+  return g;
+}
+/* big dark canopy mass along top edge */
+function canopyTop(parent, o) {
+  const g = gp(parent, {});
+  let x = o.x0;
+  while (x < o.x1) {
+    const w = rr(160, 320);
+    const dip = o.y + rr(0, o.range);
+    path(g, blobD(x + w / 2, o.y - 160 + (dip - o.y) * 0.4, w * 0.75, 260, { irr: 0.35 }), { fill: o.c || PAL.leafD });
+    /* scallop dabs on lower edge */
+    for (let i = 0; i < 5; i++) {
+      path(g, blobD(x + rr(0, w), dip - rr(0, 30), rr(24, 52), rr(14, 30), { irr: 0.5, n: 7 }),
+        { fill: _R() < 0.4 ? (o.cL || PAL.leaf) : (o.c || PAL.leafD), opacity: rr(0.6, 1) });
+    }
+    x += w * rr(0.6, 0.85);
+  }
+  /* sun-side rim dabs */
+  for (let i = 0; i < (o.dabs || 0); i++) {
+    path(g, blobD(rr(o.x0, o.x1), o.y + rr(-20, o.range * 0.8), rr(5, 12), rr(3, 7), { irr: 0.55, n: 6 }),
+      { fill: o.rim || PAL.leafSun, opacity: rr(0.2, 0.5) });
+  }
+  return g;
+}
+/* foreground framing trunk with bark strokes & moss */
+function trunkFore(parent, o) {
+  const g = gp(parent, {});
+  const x = o.x, w = o.w, top = o.top, by = o.baseY;
+  const lean = o.lean || 0;
+  path(g, 'M ' + fmt(x - w / 2) + ' ' + fmt(by) +
+    ' C ' + fmt(x - w * 0.62 + lean) + ' ' + fmt(by - (by - top) * 0.4) + ' ' + fmt(x - w * 0.4 + lean * 1.5) + ' ' + fmt(top + (by - top) * 0.2) + ' ' + fmt(x - w * 0.46 + lean * 2) + ' ' + fmt(top) +
+    ' L ' + fmt(x + w * 0.5 + lean * 2) + ' ' + fmt(top) +
+    ' C ' + fmt(x + w * 0.42 + lean * 1.5) + ' ' + fmt(top + (by - top) * 0.25) + ' ' + fmt(x + w * 0.66 + lean) + ' ' + fmt(by - (by - top) * 0.38) + ' ' + fmt(x + w / 2) + ' ' + fmt(by) + ' Z',
+    { fill: o.c || PAL.trunkD });
+  /* bark strokes */
+  for (let i = 0; i < (o.strokes || 14); i++) {
+    const sx = x + rr(-w * 0.4, w * 0.4), sy = rr(top + 30, by - 40);
+    const sl = rr(30, 130), sw = rr(1.5, 4);
+    path(g, 'M ' + fmt(sx) + ' ' + fmt(sy) + ' q ' + fmt(rr(-6, 6)) + ' ' + fmt(sl * 0.5) + ' ' + fmt(rr(-8, 8)) + ' ' + fmt(sl),
+      { stroke: _R() < 0.5 ? shade(o.c || PAL.trunkD, 0.22) : shade(o.c || PAL.trunkD, -0.35), 'stroke-width': fmt(sw), fill: 'none', opacity: rr(0.3, 0.7), 'stroke-linecap': 'round' });
+  }
+  /* side light */
+  if (o.lit) {
+    path(g, 'M ' + fmt(x + w * 0.3) + ' ' + fmt(by - 10) + ' C ' + fmt(x + w * 0.34) + ' ' + fmt(by - (by - top) * 0.4) + ' ' + fmt(x + w * 0.3) + ' ' + fmt(top + 120) + ' ' + fmt(x + w * 0.36) + ' ' + fmt(top + 10),
+      { stroke: o.lit, 'stroke-width': fmt(w * 0.14), fill: 'none', opacity: 0.5, 'stroke-linecap': 'round', filter: 'url(#b2)' });
+  }
+  /* moss clumps + hanging vine */
+  for (let i = 0; i < 4; i++) {
+    const my = rr(top + 60, by - 80);
+    path(g, blobD(x + (o.side || 1) * w * rr(0.1, 0.42), my, rr(10, 26), rr(8, 18), { irr: 0.5, n: 7 }),
+      { fill: _R() < 0.5 ? PAL.leaf : PAL.leafL, opacity: rr(0.5, 0.9) });
+  }
+  if (o.vine) {
+    const vx = x + (o.side || 1) * w * 0.3;
+    const vg = gp(g, {});
+    path(vg, vineD(vx, top + 20, rr(-30, 10), by - top - 60, 5, rr(14, 30)), { stroke: '#4c6b3c', 'stroke-width': rr(2.5, 4), fill: 'none' });
+    for (let i = 0; i < 9; i++) {
+      const t = i / 9, lx = vx + rr(-30, 10) * t, ly = top + 30 + (by - top - 70) * t + Math.sin(t * 9) * 12;
+      path(vg, leafD(rr(7, 13)), { fill: _R() < 0.5 ? '#5d844a' : '#77984f', opacity: rr(0.8, 1), transform: 'translate(' + fmt(lx) + ' ' + fmt(ly) + ') rotate(' + fmt(rr(-70, 70)) + ')' });
+    }
+  }
+  return g;
+}
+
+/* ---------------- ground ---------------- */
+function ground(parent, o) {
+  const g = gp(parent, {});
+  const y = o.y, w = 2000;
+  /* soil */
+  path(g, 'M -40 ' + fmt(y + 6) + ' Q 300 ' + fmt(y - 10) + ' 700 ' + fmt(y + 2) + ' T 1400 ' + fmt(y - 4) + ' T 2040 ' + fmt(y + 4) + ' L 2040 1120 L -40 1120 Z',
+    { fill: o.soil || PAL.soil });
+  /* grass mass edge */
+  path(g, 'M -40 ' + fmt(y + 2) + ' Q 350 ' + fmt(y - 16) + ' 760 ' + fmt(y - 4) + ' T 1500 ' + fmt(y - 10) + ' T 2040 ' + fmt(y) +
+    ' L 2040 ' + fmt(y + 26) + ' Q 1200 ' + fmt(y + 6) + ' 500 ' + fmt(y + 22) + ' T -40 ' + fmt(y + 18) + ' Z',
+    { fill: o.grassD || PAL.grassD });
+  /* grass texture dabs */
+  for (let i = 0; i < (o.dabs || 120); i++) {
+    const gx = rr(-20, 1980), gy = y + Math.pow(_R(), 0.7) * (1080 - y) * 0.9 + 4;
+    path(g, blobD(gx, gy, rr(8, 26), rr(3, 8), { irr: 0.5, n: 6 }),
+      { fill: _R() < 0.4 ? (o.grass || PAL.grass) : (o.grassD || PAL.grassD), opacity: rr(0.25, 0.6) });
+  }
+  /* sun dapples */
+  if (o.pool) {
+    for (let i = 0; i < 14; i++) {
+      const px = o.pool.x + rr(-o.pool.rx, o.pool.rx), py = o.pool.y + rr(-o.pool.ry, o.pool.ry) * 0.5;
+      path(g, blobD(px, py, rr(8, 30), rr(3, 8), { irr: 0.55, n: 6 }), { fill: o.pool.c, opacity: rr(0.1, 0.3), filter: 'url(#b2)' });
+    }
+    el('ellipse', { cx: o.pool.x, cy: o.pool.y, rx: o.pool.rx, ry: o.pool.ry, fill: o.pool.c, opacity: 0.14, filter: 'url(#b10)' }, g);
+  }
+  /* pebbles / roots */
+  for (let i = 0; i < 8; i++) {
+    const px = rr(0, 1920), py = y + rr(20, 140);
+    path(g, blobD(px, py, rr(4, 10), rr(3, 6), { irr: 0.4, n: 6 }), { fill: shade(o.soil || PAL.soil, _R() < 0.5 ? -0.3 : 0.25), opacity: 0.8 });
+  }
+  return g;
+}
+/* grass tuft row; returns {g, subs:[subgroups]} for sway */
+function grassRow(parent, o) {
+  const g = gp(parent, {});
+  const subs = [];
+  const nSub = o.subs || 3;
+  const per = Math.ceil((o.n || 40) / nSub);
+  for (let s = 0; s < nSub; s++) {
+    const sg = gp(g, {});
+    subs.push(sg);
+    for (let i = 0; i < per; i++) {
+      const x = rr(o.x0, o.x1), hgt = rr(o.h * 0.5, o.h * 1.25), lean = rr(-14, 22);
+      path(sg, bladeD(x, o.y + rr(-6, 8), hgt, lean, rr(1.6, 3.4)),
+        { fill: _R() < 0.35 ? (o.cL || PAL.grassL) : (_R() < 0.5 ? (o.c || PAL.grass) : (o.cD || PAL.grassD)), opacity: rr(0.75, 1) });
+    }
+  }
+  g.__subs = subs;
+  return g;
+}
+/* fern-like broadleaf clump */
+function fernClump(parent, x, y, s, pal) {
+  const g = gp(parent, {});
+  const n = ri(4, 6);
+  for (let i = 0; i < n; i++) {
+    const a = -90 + rr(-55, 55);
+    const len = s * rr(0.6, 1.1);
+    const rad = a * Math.PI / 180;
+    const tx = x + Math.cos(rad) * len, ty = y + Math.sin(rad) * len;
+    path(g, 'M ' + fmt(x) + ' ' + fmt(y) +
+      ' Q ' + fmt(x + Math.cos(rad) * len * 0.5 + 8) + ' ' + fmt(y + Math.sin(rad) * len * 0.5) + ' ' + fmt(tx) + ' ' + fmt(ty) +
+      ' Q ' + fmt(x + Math.cos(rad) * len * 0.5 - 8) + ' ' + fmt(y + Math.sin(rad) * len * 0.5 + 4) + ' ' + fmt(x) + ' ' + fmt(y) + ' Z',
+      { fill: _R() < 0.5 ? pal.leaf : pal.leafL, opacity: rr(0.8, 1) });
+  }
+  return g;
+}
+/* wildflowers: tiny 5-petal blooms */
+function flowerCluster(parent, x, y, n, s, cols) {
+  const g = gp(parent, {});
+  for (let i = 0; i < n; i++) {
+    const fx = x + rr(-s * 2.4, s * 2.4), fy = y + rr(-s * 1.6, s * 0.8);
+    path(g, bladeD(fx, fy + 4, s * rr(1.6, 2.6), rr(-5, 5), 1.1), { stroke: '#4f7040', 'stroke-width': 1.4, fill: '#4f7040' });
+    const c = cols[ri(0, cols.length - 1)];
+    const petals = el('g', { transform: 'translate(' + fmt(fx) + ' ' + fmt(fy) + ')' }, g);
+    for (let p = 0; p < 5; p++) {
+      const a = p / 5 * 360;
+      el('ellipse', { cx: 0, cy: -s * 0.62, rx: s * 0.42, ry: s * 0.66, fill: c, transform: 'rotate(' + a + ')' }, petals);
+    }
+    el('circle', { cx: 0, cy: 0, r: s * 0.34, fill: '#f4d670' }, petals);
+  }
+  return g;
+}
+
+/* ---------------- atmosphere ---------------- */
+function mistBand(parent, o) {
+  const g = gp(parent, { filter: 'url(#b10)' });
+  for (let i = 0; i < (o.n || 8); i++) {
+    path(g, blobD(o.x + rr(-o.w / 2, o.w / 2), o.y + rr(-o.h / 2, o.h / 2),
+      rr(o.w * 0.1, o.w * 0.26), rr(o.h * 0.5, o.h * 0.95), { irr: 0.5, n: 8 }),
+      { fill: o.c || PAL.mist, opacity: rr(o.a * 0.45, o.a) });
+  }
+  return g;
+}
+/* soft-focus background for close-ups: blobs + bokeh discs */
+function bokehBg(parent, defs, o) {
+  const g = gp(parent, {});
+  el('rect', { x: -20, y: -20, width: 1960, height: 1120, fill: o.base }, g);
+  const blobs = gp(g, { filter: 'url(#b14)' });
+  for (let i = 0; i < (o.n || 16); i++) {
+    path(blobs, blobD(rr(-100, 2020), rr(-80, 1160), rr(90, 260), rr(60, 170), { irr: 0.5, n: 8 }),
+      { fill: o.cols[ri(0, o.cols.length - 1)], opacity: rr(0.3, 0.8) });
+  }
+  const bks = gp(g, { style: 'mix-blend-mode:screen', filter: 'url(#b4)' });
+  for (let i = 0; i < (o.bokeh || 9); i++) {
+    const r = rr(14, 52);
+    el('circle', { cx: rr(0, 1920), cy: rr(0, 1080), r, fill: 'none', stroke: o.sun || '#ffe9b0', 'stroke-width': rr(3, 7), opacity: rr(0.1, 0.3) }, bks);
+    if (_R() < 0.5) el('circle', { cx: rr(0, 1920), cy: rr(0, 1080), r: r * 0.4, fill: o.sun || '#ffe9b0', opacity: rr(0.08, 0.2) }, bks);
+  }
+  return g;
+}
+/* canvas/gouache tooth overlay for background layers */
+function paintTexture(parent, defs) {
+  const f = el('filter', { id: 'paperF', x: '-2%', y: '-2%', width: '104%', height: '104%' }, defs);
+  el('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.9', numOctaves: '2', seed: '7', result: 'n' }, f);
+  const cm = el('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0.45  0 0 0 0 0.42  0 0 0 0 0.36  0 0 0 0.5 0' }, f);
+  const r = el('rect', { x: 0, y: 0, width: 1920, height: 1080, filter: 'url(#paperF)', opacity: 0.16, style: 'mix-blend-mode:multiply' }, parent);
+  return r;
+}
+
+/* ============ robot.js : ancient moss-covered guardian mech, hand-cel shaded ============ */
+'use strict';
+
+const RB = {
+  base: '#7fa08f', baseD: '#6a8a7c',
+  shade: '#54736a', deep: '#3d544c', darker: '#2f423c',
+  light: '#a9c4ae',
+  cream: '#d8ccae', creamSh: '#b0a482', creamD: '#8a7f63',
+  joint: '#5c5348', jointD: '#453e35',
+  rust: '#9a5a32', rustD: '#6f4126',
+  moss1: '#7ba050', moss2: '#95b45e', mossD: '#567a3c', mossL: '#aec878',
+  ink: '#38312a',
+  glow: '#ffd98c', glowC: '#fff4cb', eye: '#ffc76e',
+  glass: '#2c3438', glassL: '#4a5a60'
+};
+
+/* half-plane shadow polygon: light comes FROM direction dirAng (radians, screen coords) */
+function halfD(cx, cy, dirAng, L) {
+  L = L || 700;
+  const dx = Math.cos(dirAng), dy = Math.sin(dirAng);
+  const nx = -dy, ny = dx;
+  return 'M ' + fmt(cx + nx * L) + ' ' + fmt(cy + ny * L) +
+    ' L ' + fmt(cx - nx * L) + ' ' + fmt(cy - ny * L) +
+    ' L ' + fmt(cx - nx * L - dx * L) + ' ' + fmt(cy - ny * L - dy * L) +
+    ' L ' + fmt(cx + nx * L - dx * L) + ' ' + fmt(cy + ny * L - dy * L) + ' Z';
+}
+/* light dir: sun upper-right => from-angle = pointing up-right = -0.65 rad */
+const LIGHT_ANG = -0.65;
+
+/* plate: base fill + clipped cel shadow + outline (+optional rim light edge) */
+function plate(parent, id, d, o) {
+  const cpId = 'cp_' + id;
+  const cp = el('clipPath', { id: cpId }, DEFS);
+  path(cp, d, {});
+  const g = gp(parent, {});
+  path(g, d, { fill: o.base });
+  if (o.shadow !== null) {
+    const sd = o.shadow || halfD(o.cx || 0, o.cy || 0, LIGHT_ANG);
+    path(g, sd, { fill: o.shade, 'clip-path': 'url(#' + cpId + ')' });
+  }
+  if (o.core) path(g, o.core, { fill: o.coreC, 'clip-path': 'url(#' + cpId + ')' });
+  if (o.edge) path(g, o.edge, { stroke: o.edgeC || RB.light, 'stroke-width': o.ew || 3, fill: 'none', 'stroke-linecap': 'round', 'clip-path': 'url(#' + cpId + ')' });
+  if (o.outline !== false) path(g, d, { fill: 'none', stroke: RB.ink, 'stroke-width': o.ow == null ? 3 : o.ow, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+  return g;
+}
+function rivet(parent, x, y, r, c) {
+  const g = gp(parent, {});
+  el('circle', { cx: x, cy: y, r: r, fill: c || RB.joint, stroke: RB.ink, 'stroke-width': 1.2 }, g);
+  el('circle', { cx: x - r * 0.28, cy: y - r * 0.3, r: r * 0.4, fill: shade(c || RB.joint, 0.35) }, g);
+  return g;
+}
+function seam(parent, d, w) {
+  return path(parent, d, { stroke: RB.ink, 'stroke-width': w || 1.6, fill: 'none', opacity: 0.55, 'stroke-linecap': 'round' });
+}
+/* weathering builders (in part-local coords) */
+function mossPatch(parent, x, y, rx, ry, o) {
+  o = o || {};
+  const g = gp(parent, { opacity: o.op == null ? 1 : o.op });
+  path(g, blobD(x, y + ry * 0.25, rx * 1.05, ry * 0.9, { irr: 0.5, n: 8 }), { fill: RB.mossD, opacity: 0.85 });
+  const n = ri(3, 5);
+  for (let i = 0; i < n; i++) {
+    path(g, blobD(x + rr(-rx * 0.6, rx * 0.6), y + rr(-ry * 0.5, ry * 0.4), rx * rr(0.3, 0.6), ry * rr(0.3, 0.6), { irr: 0.55, n: 7 }),
+      { fill: _R() < 0.5 ? RB.moss1 : RB.moss2 });
+  }
+  for (let i = 0; i < 4; i++) {
+    path(g, blobD(x + rr(-rx * 0.7, rx * 0.7), y - ry * rr(0.1, 0.5), rr(2, 5), rr(1.5, 3), { irr: 0.6, n: 5 }),
+      { fill: RB.mossL, opacity: rr(0.5, 0.9) });
+  }
+  if (o.drip) path(g, ribbonD([[x - rx * 0.2, y + ry * 0.6], [x - rx * 0.05, y + ry * 0.6 + o.drip * 0.6], [x + rx * 0.1, y + ry * 0.6 + o.drip]], rx * 0.28, 1), { fill: RB.mossD, opacity: 0.5 });
+  return g;
+}
+function rustRun(parent, x, y, len, w) {
+  const g = gp(parent, {});
+  path(g, ribbonD([[x, y], [x + rr(-2, 2), y + len * 0.5], [x + rr(-3, 3), y + len]], w, w * 0.25), { fill: RB.rustD, opacity: 0.75 });
+  path(g, ribbonD([[x - w * 0.22, y], [x + rr(-2, 2), y + len * 0.55], [x + rr(-2, 2), y + len * 0.95]], w * 0.4, w * 0.14), { fill: RB.rust, opacity: 0.8 });
+  return g;
+}
+function chips(parent, cx, cy, n, spread, ang) {
+  const g = gp(parent, {});
+  for (let i = 0; i < n; i++) {
+    const x = cx + rr(-spread, spread), y = cy + rr(-spread * 0.4, spread * 0.4), s = rr(2.5, 6);
+    const rot = ang == null ? rr(0, 360) : ang + rr(-25, 25);
+    path(g, 'M ' + fmt(-s) + ' ' + fmt(-s * 0.3) + ' L ' + fmt(s * 0.2) + ' ' + fmt(-s * 0.55) + ' L ' + fmt(s * 0.8) + ' ' + fmt(s * 0.25) + ' L ' + fmt(-s * 0.4) + ' ' + fmt(s * 0.5) + ' Z',
+      { fill: RB.darker, transform: 'translate(' + fmt(x) + ' ' + fmt(y) + ') rotate(' + fmt(rot) + ')' });
+    path(g, 'M ' + fmt(-s) + ' ' + fmt(-s * 0.3) + ' L ' + fmt(s * 0.2) + ' ' + fmt(-s * 0.55),
+      { stroke: RB.light, 'stroke-width': 1.1, transform: 'translate(' + fmt(x) + ' ' + fmt(y) + ') rotate(' + fmt(rot) + ')', opacity: 0.7 });
+  }
+  return g;
+}
+function scratches(parent, cx, cy, n, spread) {
+  const g = gp(parent, {});
+  for (let i = 0; i < n; i++) {
+    const x = cx + rr(-spread, spread), y = cy + rr(-spread * 0.5, spread * 0.5);
+    path(g, 'M ' + fmt(x) + ' ' + fmt(y) + ' l ' + fmt(rr(6, 20)) + ' ' + fmt(rr(-4, 4)),
+      { stroke: _R() < 0.5 ? RB.light : RB.darker, 'stroke-width': rr(0.8, 1.6), opacity: rr(0.35, 0.7), 'stroke-linecap': 'round' });
+  }
+  return g;
+}
+function vineOn(parent, d, nLeaves, s) {
+  const g = gp(parent, {});
+  path(g, d, { stroke: '#4c6b3a', 'stroke-width': 2.6, fill: 'none', 'stroke-linecap': 'round' });
+  /* sample along a quadratic-ish path approximately: reuse d params via leaves placed manually */
+  for (let i = 0; i < nLeaves; i++) {
+    const t = (i + 0.5) / nLeaves;
+    const pt = vinePoint(d, t);
+    path(g, leafD(s || rr(6, 10)), {
+      fill: _R() < 0.5 ? '#5d844a' : '#7a9c50',
+      transform: 'translate(' + fmt(pt[0]) + ' ' + fmt(pt[1]) + ') rotate(' + fmt(rr(-80, 80)) + ') scale(' + fmt(_R() < 0.5 ? 1 : -1) + ' 1)'
+    });
+  }
+  return g;
+}
+/* crude sampler for 'M x y Q ... Q ...' quad chains used by vineD */
+function vinePoint(d, t) {
+  const nums = d.match(/-?\d+(\.\d+)?/g).map(Number);
+  const x0 = nums[0], y0 = nums[1];
+  const waves = (nums.length - 2) / 6;
+  const i = Math.min(waves - 1, Math.floor(t * waves));
+  const lt = t * waves - i;
+  const cx = nums[2 + i * 6], cy = nums[3 + i * 6], x1 = nums[6 + i * 6], y1 = nums[7 + i * 6];
+  const a = lerp(x0, cx, lt), b = lerp(y0, cy, lt);
+  const c = lerp(cx, x1, lt), e = lerp(cy, y1, lt);
+  return [lerp(a, c, lt), lerp(b, e, lt)];
+}
+
+/* ================================================================
+   ROBOT — canonical pose: standing, facing right (+x), feet at y=0
+   total height ~660. All parts nested for pose transforms.
+================================================================ */
+function makeRobot(uidp, opts) {
+  opts = opts || {};
+  const detail = opts.detail !== false;   // close-up richness
+  const root = gp(null, {});
+  const hipG = gp(root, {});              // translate(0, hip)
+  const torsoG = gp(hipG, {});            // translate(0,hip) rotate(torso,0,-352)
+  const P = { root, hipG, torsoG };
+
+  /* ---------- FAR LEG (behind) ---------- */
+  const legF = gp(hipG, {});
+  const thighF = gp(legF, {});
+  plate(thighF, uidp + 'thF', 'M -66 -150 L -74 -270 Q -76 -294 -52 -298 L -14 -298 Q 8 -296 6 -272 L 0 -150 Z',
+    { base: RB.baseD, shade: RB.shade, cx: -32, cy: -224, ow: 3 });
+  mossPatch(thighF, -40, -270, 20, 10);
+  const shinF = gp(thighF, {});
+  plate(shinF, uidp + 'shF', 'M -70 -34 L -74 -136 Q -74 -158 -52 -162 L -18 -160 Q 0 -158 -2 -136 L -6 -34 Z',
+    { base: RB.baseD, shade: RB.shade, cx: -38, cy: -98, ow: 3 });
+  const footF = gp(shinF, {});
+  plate(footF, uidp + 'ftF', 'M -80 0 L -84 -20 Q -85 -32 -71 -34 L -12 -36 Q 8 -37 10 -19 L 11 0 Z',
+    { base: RB.jointD, shade: RB.darker, cx: -36, cy: -18, ow: 3 });
+  P.thighF = thighF; P.shinF = shinF; P.footF = footF;
+
+  /* ---------- FAR ARM (behind torso) ---------- */
+  const armF = gp(torsoG, {});
+  const uaF = gp(armF, {});
+  plate(uaF, uidp + 'uaF', 'M -142 -460 L -98 -458 L -92 -350 L -136 -354 Z',
+    { base: RB.baseD, shade: RB.shade, cx: -118, cy: -406, ow: 3 });
+  const faF = gp(uaF, {});
+  plate(faF, uidp + 'faF', 'M -138 -346 L -96 -348 L -90 -226 L -132 -224 Z',
+    { base: RB.baseD, shade: RB.shade, cx: -114, cy: -286, ow: 3 });
+  el('circle', { cx: -114, cy: -350, r: 19, fill: RB.jointD, stroke: RB.ink, 'stroke-width': 2.6 }, faF);
+  const handF = gp(faF, {});
+  plate(handF, uidp + 'hF', 'M -134 -222 L -94 -224 L -92 -172 Q -92 -162 -104 -162 L -124 -162 Q -134 -164 -134 -176 Z',
+    { base: RB.jointD, shade: RB.darker, cx: -113, cy: -192, ow: 2.6 });
+  P.uaF = uaF; P.faF = faF; P.handF = handF;
+
+  /* ---------- ENGINE STACKS on back ---------- */
+  const stacks = gp(torsoG, {});
+  function stack(x, top, w) {
+    const s = gp(stacks, {});
+    plate(s, uidp + 'st' + x, 'M ' + x + ' -540 L ' + (x + w) + ' -540 L ' + (x + w - 3) + ' ' + top + ' Q ' + (x + w - 4) + ' ' + (top - 10) + ' ' + (x + w / 2) + ' ' + (top - 12) + ' Q ' + (x + 2) + ' ' + (top - 10) + ' ' + (x + 2) + ' ' + top + ' Z',
+      { base: RB.joint, shade: RB.jointD, cx: x + w / 2, cy: (-540 + top) / 2, ow: 3 });
+    const topY = top - 12;
+    el('ellipse', { cx: x + w / 2, cy: topY, rx: w / 2 - 2, ry: 7, fill: RB.darker, stroke: RB.ink, 'stroke-width': 2.2 }, s);
+    el('ellipse', { cx: x + w / 2, cy: topY + 1, rx: w / 2 - 7, ry: 4.4, fill: '#241f1a' }, s);
+    for (let i = 0; i < 3; i++) {
+      const by = -560 - i * 42;
+      seam(s, 'M ' + (x + 3) + ' ' + by + ' Q ' + (x + w / 2) + ' ' + (by + 5) + ' ' + (x + w - 3) + ' ' + by, 2);
+    }
+    /* soot + rust */
+    path(s, blobD(x + w * 0.3, top + 40, w * 0.3, 26, { irr: 0.5, n: 7 }), { fill: '#2c2620', opacity: 0.5 });
+    rustRun(s, x + w * 0.6, -600, 46, 5);
+    mossPatch(s, x + w * 0.5, top + 18, w * 0.3, 9, { op: 0.9 });
+    return s;
+  }
+  stack(-128, -648, 40);
+  stack(-76, -682, 44);
+  /* cables */
+  path(stacks, vineD(-70, -560, -60, 60, 3, 18), { stroke: RB.jointD, 'stroke-width': 7, fill: 'none', 'stroke-linecap': 'round' });
+  path(stacks, vineD(-64, -556, -58, 58, 3, 16), { stroke: RB.joint, 'stroke-width': 3, fill: 'none', 'stroke-linecap': 'round' });
+  P.stacks = stacks;
+
+  /* ---------- TORSO + PELVIS ---------- */
+  const torso = gp(torsoG, {});
+  /* pelvis skirt */
+  plate(torso, uidp + 'pelv', 'M -74 -292 L 78 -292 L 86 -330 Q 88 -354 60 -356 L -64 -356 Q -88 -354 -86 -330 Z',
+    { base: RB.joint, shade: RB.jointD, cx: 0, cy: -324, ow: 3 });
+  plate(torso, uidp + 'skirt', 'M -26 -296 L 62 -296 L 70 -250 Q 72 -238 56 -238 L -14 -240 Q -30 -242 -28 -258 Z',
+    { base: RB.cream, shade: RB.creamSh, cx: 20, cy: -268, ow: 3 });
+  seam(torso, 'M 20 -296 L 18 -240', 1.6);
+  /* main barrel */
+  const torG = plate(torso, uidp + 'torso', 'M -90 -352 L 94 -352 L 108 -460 Q 112 -516 76 -536 L -74 -536 Q -110 -518 -104 -460 Z',
+    { base: RB.base, shade: RB.shade, cx: 2, cy: -444, ow: 3.4 });
+  torG.setAttribute('data-anchor', uidp + 'torso'); torG.setAttribute('data-pt', '2,-444');
+  /* core shadow band bottom */
+  path(torso, halfD(0, -372, LIGHT_ANG, 300), { fill: RB.deep, 'clip-path': 'url(#cp_' + uidp + 'torso)', opacity: 0.55 });
+  /* collar */
+  plate(torso, uidp + 'collar', 'M -46 -536 L 62 -536 L 56 -556 L -40 -556 Z', { base: RB.joint, shade: RB.jointD, cx: 8, cy: -546, ow: 2.6 });
+  /* chest hatch + core */
+  plate(torso, uidp + 'hatch', 'M -30 -420 Q -28 -508 24 -512 Q 78 -508 80 -418 Q 78 -382 24 -378 Q -28 -382 -30 -420 Z',
+    { base: RB.cream, shade: RB.creamSh, cx: 25, cy: -448, ow: 3 });
+  el('circle', { cx: 25, cy: -448, r: 40, fill: RB.joint, stroke: RB.ink, 'stroke-width': 2.6 }, torso);
+  el('circle', { cx: 25, cy: -448, r: 33, fill: RB.deep, stroke: RB.ink, 'stroke-width': 2 }, torso);
+  const coreGlow = el('circle', { cx: 25, cy: -448, r: 26, fill: RB.glow, opacity: 0, 'data-anchor': uidp + 'core', 'data-pt': '25,-448' }, torso);
+  const coreCore = el('circle', { cx: 25, cy: -448, r: 14, fill: RB.glowC, opacity: 0 }, torso);
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * TAU + 0.3;
+    rivet(torso, 25 + Math.cos(a) * 40, -448 + Math.sin(a) * 40, 3.4, RB.jointD);
+  }
+  /* seams + vents */
+  seam(torso, 'M -20 -356 L -24 -460 Q -24 -500 -10 -532', 2);
+  seam(torso, 'M -88 -430 Q 0 -420 100 -434', 1.8);
+  for (let i = 0; i < 3; i++) {
+    path(torso, 'M -74 ' + (-470 + i * 16) + ' l 20 -2', { stroke: RB.deep, 'stroke-width': 4.4, 'stroke-linecap': 'round', opacity: 0.85 });
+  }
+  /* weathering */
+  mossPatch(torso, -62, -502, 26, 16, { drip: 26 });
+  mossPatch(torso, 70, -360, 16, 9, { op: 0.85 });
+  rustRun(torso, -60, -452, 60, 6);
+  rustRun(torso, 92, -470, 42, 4);
+  chips(torso, 40, -360, 4, 26);
+  scratches(torso, 0, -450, 6, 70);
+  path(torso, vineD(-84, -350, 150, -140, 4, 22), { stroke: '#4c6b3a', 'stroke-width': 3, fill: 'none', opacity: 0.95 });
+  const torVine = vineOn(torso, vineD(-84, -350, 150, -140, 4, 22), 7, 8);
+  torso.setAttribute('data-part', uidp + 'torso');
+  P.torso = torso; P.coreGlow = coreGlow; P.coreCore = coreCore; P.torVine = torVine;
+
+  /* ---------- NEAR LEG ---------- */
+  const legN = gp(hipG, {});
+  const thighN = gp(legN, {});
+  plate(thighN, uidp + 'thN', 'M -34 -150 L -44 -272 Q -46 -298 -20 -302 L 28 -302 Q 52 -300 48 -272 L 38 -150 Z',
+    { base: RB.base, shade: RB.shade, cx: 2, cy: -226, ow: 3.2 });
+  path(thighN, halfD(4, -160, LIGHT_ANG, 260), { fill: RB.deep, 'clip-path': 'url(#cp_' + uidp + 'thN)', opacity: 0.4 });
+  /* knee dome */
+  const shinN = gp(thighN, {});
+  plate(shinN, uidp + 'shN', 'M -42 -34 L -38 -138 Q -36 -162 -12 -166 L 32 -164 Q 54 -162 52 -138 L 44 -34 Z',
+    { base: RB.base, shade: RB.shade, cx: 6, cy: -100, ow: 3.2 });
+  plate(shinN, uidp + 'knee', 'M -22 -156 Q -24 -192 8 -194 Q 42 -192 40 -154 Q 38 -132 8 -130 Q -20 -132 -22 -156 Z',
+    { base: RB.cream, shade: RB.creamSh, cx: 9, cy: -162, ow: 3 });
+  plate(shinN, uidp + 'guard', 'M -8 -140 L -4 -62 Q -2 -46 14 -46 L 28 -48 Q 38 -50 36 -66 L 32 -142 Z',
+    { base: RB.baseD, shade: RB.shade, cx: 14, cy: -94, ow: 2.6 });
+  mossPatch(shinN, -18, -150, 14, 9, { op: 0.9 });
+  rustRun(shinN, 44, -130, 40, 4);
+  chips(shinN, 20, -60, 3, 18);
+  const footN = gp(shinN, {});
+  plate(footN, uidp + 'ftN', 'M -48 0 L -56 -22 Q -58 -34 -44 -36 L 36 -40 Q 60 -42 64 -20 L 66 0 Z',
+    { base: RB.joint, shade: RB.jointD, cx: 8, cy: -18, ow: 3.2 });
+  plate(footN, uidp + 'toe', 'M 32 -40 Q 60 -42 64 -20 L 66 0 L 34 0 Z', { base: RB.cream, shade: RB.creamSh, cx: 50, cy: -20, ow: 2.6 });
+  rivet(footN, 40, -26, 2.6, RB.creamD);
+  rivet(footN, 54, -24, 2.6, RB.creamD);
+  footN.setAttribute('data-part', uidp + 'footN');
+  P.thighN = thighN; P.shinN = shinN; P.footN = footN;
+
+  /* ---------- HEAD (nested in torso) ---------- */
+  const headG = gp(torsoG, {});
+  const head = gp(headG, {});
+  /* neck */
+  plate(head, uidp + 'neck', 'M -32 -552 L 48 -552 L 46 -580 L -30 -580 Z', { base: RB.jointD, shade: RB.darker, cx: 8, cy: -566, ow: 2.6 });
+  /* dome */
+  const domeG = plate(head, uidp + 'dome', 'M -64 -576 Q -80 -622 -52 -652 Q -18 -676 18 -674 Q 56 -670 66 -638 Q 74 -608 60 -578 Q 20 -566 -16 -568 Q -48 -568 -64 -576 Z',
+    { base: RB.base, shade: RB.shade, cx: 2, cy: -622, ow: 3.4 });
+  domeG.setAttribute('data-anchor', uidp + 'dome'); domeG.setAttribute('data-pt', '2,-622');
+  path(head, halfD(4, -600, LIGHT_ANG, 220), { fill: RB.deep, 'clip-path': 'url(#cp_' + uidp + 'dome)', opacity: 0.35 });
+  path(head, 'M 30 -668 Q 58 -660 64 -636 Q 70 -614 62 -596', { stroke: RB.light, 'stroke-width': 3.4, fill: 'none', 'stroke-linecap': 'round', 'clip-path': 'url(#cp_' + uidp + 'dome)', opacity: 0.85 });
+  /* faceplate */
+  plate(head, uidp + 'face', 'M 4 -578 Q 0 -618 20 -642 Q 42 -656 58 -638 Q 68 -618 60 -588 Q 40 -572 16 -574 Z',
+    { base: RB.cream, shade: RB.creamSh, cx: 34, cy: -608, ow: 3 });
+  /* brow */
+  plate(head, uidp + 'brow', 'M 6 -630 Q 28 -646 56 -632 L 54 -618 Q 30 -628 10 -618 Z', { base: RB.creamSh, shade: RB.creamD, cx: 30, cy: -628, ow: 2.4 });
+  /* eyes */
+  function eye(x, y, r) {
+    const e = gp(head, {});
+    el('circle', { cx: x, cy: y, r: r, fill: RB.glass, stroke: RB.ink, 'stroke-width': 2.2 }, e);
+    el('circle', { cx: x, cy: y, r: r * 0.62, fill: RB.glassL, opacity: 0.55 }, e);
+    path(e, 'M ' + (x - r * 0.5) + ' ' + (y - r * 0.55) + ' q ' + r * 0.5 + ' ' + -r * 0.3 + ' ' + r * 1.0 + ' ' + (-r * 0.1), { stroke: '#cfe4e8', 'stroke-width': 2.4, fill: 'none', 'stroke-linecap': 'round', opacity: 0.75 });
+    const halo = el('circle', { cx: x, cy: y, r: r * 2.6, fill: RB.glow, opacity: 0, filter: 'url(#b8)' }, e);
+    const iris = el('circle', { cx: x, cy: y, r: r * 0.72, fill: RB.eye, opacity: 0, 'data-anchor': uidp + 'eye' + x, 'data-pt': x + ',' + y }, e);
+    const spark = el('circle', { cx: x - r * 0.2, cy: y - r * 0.25, r: r * 0.22, fill: RB.glowC, opacity: 0 }, e);
+    return { halo, iris, spark };
+  }
+  const eyeL = eye(26, -606, 12.5), eyeR = eye(50, -600, 10.5);
+  /* cheek vents */
+  for (let i = 0; i < 3; i++) {
+    path(head, 'M ' + (34 + i * 8) + ' -590 l 6 8', { stroke: RB.jointD, 'stroke-width': 4, 'stroke-linecap': 'round' });
+  }
+  /* chin plate */
+  plate(head, uidp + 'chin', 'M 18 -580 L 54 -582 L 50 -570 L 22 -569 Z', { base: RB.creamSh, shade: RB.creamD, cx: 36, cy: -575, ow: 2.2 });
+  /* seams + rivets + antenna */
+  seam(head, 'M -60 -590 Q -20 -578 8 -580', 1.8);
+  seam(head, 'M -48 -646 Q -20 -662 4 -664', 1.6);
+  rivet(head, -40, -596, 3, RB.joint);
+  rivet(head, -18, -578, 3, RB.joint);
+  rivet(head, 6, -646, 2.6, RB.creamD);
+  plate(head, uidp + 'ant', 'M -40 -672 L -32 -674 L -34 -692 Q -36 -696 -40 -694 Z', { base: RB.jointD, shade: RB.darker, cx: -36, cy: -682, ow: 2 });
+  /* weathering */
+  mossPatch(head, -34, -650, 22, 12, { drip: 20 });
+  mossPatch(head, 14, -668, 14, 7, { op: 0.9 });
+  rustRun(head, -52, -610, 34, 4);
+  scratches(head, 0, -610, 5, 40);
+  chips(head, -8, -586, 3, 14);
+  if (detail) flowerCluster(head, 12, -668, 2, 5, ['#f2e6d8', '#e8b7c2']);
+  headG.setAttribute('data-part', uidp + 'head');
+  P.headG = headG; P.head = head; P.eyeL = eyeL; P.eyeR = eyeR;
+
+  /* ---------- NEAR ARM (in front) ---------- */
+  const armN = gp(torsoG, {});
+  const uaN = gp(armN, {});
+  plate(uaN, uidp + 'uaN', 'M 96 -466 L 148 -462 L 154 -352 L 104 -356 Z',
+    { base: RB.base, shade: RB.shade, cx: 126, cy: -408, ow: 3.2 });
+  mossPatch(uaN, 130, -458, 14, 7, { op: 0.9 });
+  const faN = gp(uaN, {});
+  el('circle', { cx: 128, cy: -352, r: 20, fill: RB.joint, stroke: RB.ink, 'stroke-width': 2.8 }, faN);
+  el('circle', { cx: 128, cy: -352, r: 9, fill: RB.jointD }, faN);
+  plate(faN, uidp + 'faN', 'M 100 -342 L 154 -344 L 160 -224 L 108 -220 Z',
+    { base: RB.base, shade: RB.shade, cx: 130, cy: -282, ow: 3.2 });
+  plate(faN, uidp + 'fguard', 'M 110 -332 L 148 -334 L 152 -252 L 116 -250 Z', { base: RB.baseD, shade: RB.shade, cx: 131, cy: -292, ow: 2.4 });
+  rivet(faN, 118, -326, 2.4, RB.jointD);
+  rivet(faN, 142, -328, 2.4, RB.jointD);
+  rustRun(faN, 156, -300, 44, 4);
+  const handN = gp(faN, {});
+  plate(handN, uidp + 'hN', 'M 104 -218 L 160 -220 L 162 -168 Q 162 -156 148 -156 L 116 -156 Q 104 -158 104 -170 Z',
+    { base: RB.joint, shade: RB.jointD, cx: 132, cy: -188, ow: 2.8 });
+  for (let i = 0; i < 3; i++) {
+    const fx = 112 + i * 17;
+    plate(handN, uidp + 'fing' + i, 'M ' + fx + ' -158 L ' + (fx + 13) + ' -158 L ' + (fx + 12) + ' -130 Q ' + (fx + 11) + ' -124 ' + (fx + 5) + ' -124 Q ' + fx + ' -125 ' + fx + ' -131 Z',
+      { base: RB.joint, shade: RB.jointD, cx: fx + 6, cy: -142, ow: 2.2 });
+  }
+  chips(handN, 130, -180, 3, 16);
+  P.uaN = uaN; P.faN = faN; P.handN = handN;
+
+  /* ---------- PAULDRONS ---------- */
+  const pdN = gp(torsoG, {});
+  const pdnG = plate(pdN, uidp + 'pdN', 'M 50 -506 Q 56 -560 112 -568 Q 170 -570 178 -516 Q 182 -486 168 -468 Q 130 -456 84 -460 Q 52 -468 50 -506 Z',
+    { base: RB.base, shade: RB.shade, cx: 114, cy: -514, ow: 3.4 });
+  pdnG.setAttribute('data-anchor', uidp + 'pdN'); pdnG.setAttribute('data-pt', '114,-514');
+  path(pdN, halfD(112, -506, LIGHT_ANG, 240), { fill: RB.deep, 'clip-path': 'url(#cp_' + uidp + 'pdN)', opacity: 0.4 });
+  path(pdN, 'M 70 -556 Q 110 -570 152 -560', { stroke: RB.light, 'stroke-width': 3.2, fill: 'none', 'stroke-linecap': 'round', opacity: 0.9 });
+  for (let i = 0; i < 5; i++) rivet(pdN, 62 + i * 26, -472 + Math.sin(i * 0.8) * 5, 3, RB.jointD);
+  mossPatch(pdN, 96, -552, 30, 13, { drip: 22 });
+  mossPatch(pdN, 150, -546, 18, 9, { op: 0.9 });
+  rustRun(pdN, 168, -500, 40, 5);
+  chips(pdN, 84, -486, 4, 20);
+  scratches(pdN, 120, -510, 5, 40);
+  if (detail) flowerCluster(pdN, 110, -560, 4, 6, ['#f5ead9', '#e8b7c2', '#d9c8e8']);
+  const pdF = gp(torsoG, {});
+  plate(pdF, uidp + 'pdF', 'M -152 -498 Q -156 -542 -110 -548 Q -66 -550 -60 -506 Q -58 -482 -68 -468 Q -102 -458 -136 -462 Q -154 -470 -152 -498 Z',
+    { base: RB.baseD, shade: RB.shade, cx: -106, cy: -506, ow: 3.2 });
+  mossPatch(pdF, -120, -536, 22, 10, { op: 0.95 });
+  pdN.setAttribute('data-part', uidp + 'pdN');
+  P.pdN = pdN; P.pdF = pdF;
+
+  /* hanging vine off far pauldron */
+  const hangV = gp(torsoG, {});
+  path(hangV, vineD(-128, -470, -14, 66, 3, 10), { stroke: '#4c6b3a', 'stroke-width': 2.4, fill: 'none' });
+  for (let i = 0; i < 5; i++) {
+    const pt = vinePoint(vineD(-128, -470, -14, 66, 3, 10), (i + 0.5) / 5);
+    path(hangV, leafD(7), { fill: '#628a4a', transform: 'translate(' + fmt(pt[0]) + ' ' + fmt(pt[1]) + ') rotate(' + fmt(rr(-60, 60)) + ')' });
+  }
+
+  /* draw order fixes: hipG = [far leg, near leg, torso]; torsoG back-to-front already handled */
+  hipG.appendChild(torsoG);
+  torsoG.insertBefore(pdF, stacks);
+  torsoG.insertBefore(armF, pdF);
+  torsoG.insertBefore(stacks, armF);
+  torsoG.insertBefore(hangV, torso);
+
+  /* ================= POSE SYSTEM ================= */
+  const piv = {
+    torso: [0, -352], head: [8, -556],
+    thighN: [2, -298], shinN: [6, -160], footN: [8, -10],
+    thighF: [-32, -294], shinF: [-38, -158], footF: [-36, -10],
+    uaN: [124, -470], faN: [128, -352],
+    uaF: [-118, -462], faF: [-114, -350]
+  };
+  function rot(g, a, p, dx, dy) {
+    let t = '';
+    if (dx || dy) t += 'translate(' + fmt(dx || 0) + ' ' + fmt(dy || 0) + ') ';
+    t += 'rotate(' + fmt(a) + ' ' + p[0] + ' ' + p[1] + ')';
+    g.setAttribute('transform', t);
+  }
+  P.set = function (p) {
+    rot(hipG, 0, [0, 0], 0, p.hip || 0);
+    /* torsoG is a child of hipG: hip translate is inherited, no double apply */
+    torsoG.setAttribute('transform', 'rotate(' + fmt(p.torso || 0) + ' ' + piv.torso[0] + ' ' + piv.torso[1] + ')');
+    rot(headG, p.head || 0, piv.head);
+    rot(thighN, p.tN || 0, piv.thighN, p.tdxN || 0, 0);
+    rot(shinN, p.sN || 0, piv.shinN);
+    rot(footN, p.fN || 0, piv.footN);
+    rot(thighF, p.tF || 0, piv.thighF, p.tdxF || 0, 0);
+    rot(shinF, p.sF || 0, piv.shinF);
+    rot(footF, p.fF || 0, piv.footF);
+    rot(uaN, p.uaN || 0, piv.uaN);
+    rot(faN, p.faN || 0, piv.faN);
+    rot(uaF, p.uaF || 0, piv.uaF);
+    rot(faF, p.faF || 0, piv.faF);
+  };
+  P.setEyes = function (v, glowScale) {
+    eyeL.iris.setAttribute('opacity', v); eyeR.iris.setAttribute('opacity', v);
+    eyeL.spark.setAttribute('opacity', v * 0.9); eyeR.spark.setAttribute('opacity', v * 0.9);
+    eyeL.halo.setAttribute('opacity', v * 0.55); eyeR.halo.setAttribute('opacity', v * 0.55);
+    const s = glowScale || 1;
+    eyeL.halo.setAttribute('r', 33 * s); eyeR.halo.setAttribute('r', 27 * s);
+  };
+  P.setCore = function (v) {
+    coreGlow.setAttribute('opacity', v * 0.85);
+    coreCore.setAttribute('opacity', v);
+    coreGlow.setAttribute('r', 26 + v * 14);
+    coreCore.setAttribute('r', 12 + v * 8);
+  };
+  P.set({});
+
+  /* vine slide-off control: hide torso vine when called */
+  P.dropVines = function () {
+    torVine.setAttribute('opacity', 0);
+    hangV.setAttribute('opacity', 0);
+    mossPatch(pdN, 96, -552, 30, 13, { op: 0 }); /* can't remove; just dim later if needed */
+  };
+  return P;
+}
+
+/* ================================================================
+   POSES (relative rotations; +ve = clockwise = limb swings BACK)
+================================================================ */
+const POSES = {
+  stand: { hip: 0, torso: 0, head: 0, tN: 0, sN: 0, fN: 0, tF: 0, sF: 0, fF: 0, uaN: -3, faN: -2, uaF: -5, faF: -3 },
+  kneel: {
+    hip: 205, torso: 15, head: 13,
+    tN: -16, sN: 96, fN: -80, tF: -24, sF: 104, fF: -80,
+    uaN: -48, faN: -26, uaF: -42, faF: -30
+  },
+  plant: {
+    hip: 118, torso: 8, head: 6,
+    tN: -40, sN: 74, fN: -40, tF: -46, sF: 88, fF: -46,
+    uaN: -74, faN: -10, uaF: -70, faF: -14
+  },
+  push: {
+    hip: 62, torso: -4, head: -3,
+    tN: -66, sN: 96, fN: -34, tF: -20, sF: 44, fF: -18,
+    uaN: -80, faN: -8, uaF: -76, faF: -10
+  },
+  half: {
+    hip: 26, torso: -2, head: -4,
+    tN: -14, sN: 22, fN: -10, tF: -8, sF: 14, fF: -8,
+    uaN: -34, faN: -12, uaF: -30, faF: -14
+  },
+  stand: { hip: 0, torso: 0, head: 0, tN: 0, sN: 0, fN: 0, tF: 0, sF: 0, fF: 0, uaN: -3, faN: -2, uaF: -5, faF: -3 },
+  look: { hip: 0, torso: -2, head: -17, tN: 0, sN: 0, fN: 0, tF: 0, sF: 0, fF: 0, uaN: -6, faN: -2, uaF: -8, faF: -4 },
+  ign: {
+    hip: 34, torso: -4, head: -15,
+    tN: -18, sN: 20, fN: -4, tF: 14, sF: -10, fF: -4, tdxN: 8, tdxF: -10,
+    uaN: -30, faN: -18, uaF: -34, faF: -20
+  }
+};
+const POSE_KEYS = ['hip', 'torso', 'head', 'tN', 'sN', 'fN', 'tF', 'sF', 'fF', 'uaN', 'faN', 'uaF', 'faF', 'tdxN', 'tdxF'];
+function lerpPose(A, B, u) {
+  const o = {};
+  for (const k of POSE_KEYS) o[k] = lerp(A[k] || 0, B[k] || 0, u);
+  return o;
+}
+
+/* ================================================================
+   BIRD — small sparrow, 2-state wings, Ghibli-ish
+================================================================ */
+function makeBird(scale, o) {
+  o = o || {};
+  const root = gp(null, {});
+  const body = gp(root, {});
+  const cBack = o.back || '#8a7a5f', cWing = o.wing || '#6b5e4d', cBelly = o.belly || '#ecdcbf';
+  const s = scale;
+  /* tail */
+  path(body, 'M -26 2 L -52 8 L -50 14 L -24 10 Z', { fill: cWing, stroke: '#3a332b', 'stroke-width': 1.4, 'stroke-linejoin': 'round' });
+  /* body */
+  path(body, 'M -30 6 Q -28 -12 -8 -16 Q 12 -18 22 -6 Q 28 2 22 10 Q 10 20 -8 18 Q -26 16 -30 6 Z',
+    { fill: cBelly, stroke: '#3a332b', 'stroke-width': 1.8, 'stroke-linejoin': 'round' });
+  path(body, 'M -28 2 Q -16 -12 2 -13 L 0 16 Q -20 14 -28 2 Z', { fill: cBack, opacity: 0.9 });
+  /* head */
+  el('circle', { cx: 22, cy: -8, r: 11, fill: cBack, stroke: '#3a332b', 'stroke-width': 1.8 }, body);
+  el('circle', { cx: 25.5, cy: -10, r: 2.1, fill: '#241f1a' }, body);
+  el('circle', { cx: 26.2, cy: -10.8, r: 0.7, fill: '#fff', opacity: 0.9 }, body);
+  const beak1 = path(body, 'M 32 -9 L 43 -6.5 L 32 -4 Z', { fill: '#d9a05a', stroke: '#3a332b', 'stroke-width': 1.2, 'stroke-linejoin': 'round' });
+  const beak2 = path(body, 'M 32 -7 L 42 -3 L 31.5 -2.5 Z', { fill: '#b97f42', stroke: '#3a332b', 'stroke-width': 1.1, 'stroke-linejoin': 'round' });
+  /* legs */
+  const legs = path(body, 'M 2 17 L 1 26 M 10 17 L 10 26 M -2 26 L 5 26 M 6 26 L 14 26', { stroke: '#5d4f3e', 'stroke-width': 1.8, fill: 'none', 'stroke-linecap': 'round' });
+  /* wings: folded + 3 flap states */
+  const wingFold = path(body, 'M -18 -4 Q 2 -14 16 -6 Q 4 6 -12 6 Q -20 2 -18 -4 Z', { fill: cWing, stroke: '#3a332b', 'stroke-width': 1.6, 'stroke-linejoin': 'round' });
+  function wingShape(d, op) { const w = path(body, d, { fill: cWing, stroke: '#3a332b', 'stroke-width': 1.6, 'stroke-linejoin': 'round', opacity: op == null ? 1 : op }); return w; }
+  const wingUp = wingShape('M -6 -8 Q -14 -34 6 -40 Q 10 -26 8 -12 Q 2 -8 -6 -8 Z', 0);
+  const wingMid = wingShape('M -8 -6 Q -26 -18 -30 -6 Q -20 2 -6 0 Z', 0);
+  const wingDn = wingShape('M -8 -4 Q -20 8 -34 12 Q -22 -2 -10 -8 Z', 0);
+  const states = [wingUp, wingMid, wingDn, wingMid];
+  root.__flap = function (ph) { /* ph: -1 folded, 0..3 wing cycle */
+    if (ph < 0) { states.forEach(w => w.setAttribute('opacity', 0)); wingFold.setAttribute('opacity', 1); return; }
+    wingFold.setAttribute('opacity', 0);
+    states.forEach((w, i) => w.setAttribute('opacity', i === Math.floor(ph) % 4 ? 1 : 0));
+  };
+  root.__head = function (a) { /* head tilt for chirp */
+    el; body.childNodes.forEach(() => { });
+    /* cheap: rotate whole head group not tracked; use beak2 visibility for chirp */
+  };
+  root.__chirp = function (open) { beak1.setAttribute('opacity', 1); beak2.setAttribute('opacity', open ? 0.15 : 1); };
+  root.__chirp(false);
+  root.setAttribute('transform', 'scale(' + s + ')');
+  return root;
+}
+
+/* ============ fx.js : particles & moving effects, all frame = f(t) ============ */
+'use strict';
+
+/* ---------------- falling / tumbling leaves ---------------- */
+/* each leaf: deterministic params; analytic position from absolute t */
+function makeLeaves(parent, n, o) {
+  const g = gp(parent, {});
+  const items = [];
+  const LEAFCOLS = o.cols || ['#7d9c54', '#93ac5e', '#aabf6a', '#c9c176', '#b08f4e', '#6d8a4c'];
+  for (let i = 0; i < n; i++) {
+    const p = {
+      x0: o.x0 + rr(0, o.w), span: o.h,
+      y0: o.y0 + rr(0, o.h * 0.8),
+      vy: rr(o.vy0, o.vy1),
+      swA: rr(o.swA0, o.swA1), swF: rr(0.5, 1.1), ph: rr(0, TAU),
+      rot0: rr(0, 360), rotV: rr(-160, 160), tumF: rr(1.2, 2.6),
+      s: rr(o.s0, o.s1), col: LEAFCOLS[ri(0, LEAFCOLS.length - 1)],
+      t0: o.t0 != null ? o.t0 + rr(0, o.tSpread || 0) : 0,
+      windK: rr(0.6, 1.4), drift: rr(-6, 10)
+    };
+    const lg = gp(g, {});
+    path(lg, leafD(p.s), { fill: p.col, stroke: o.ink ? 'rgba(58,50,43,0.4)' : 'none', 'stroke-width': 0.8 });
+    path(lg, 'M 0 ' + fmt(-p.s) + ' L ' + fmt(p.s * 0.1) + ' ' + fmt(p.s * 0.85), { stroke: shade(p.col, -0.3), 'stroke-width': 0.8, fill: 'none' });
+    items.push({ p, n: lg });
+  }
+  g.__update = function (t, wind) {
+    for (const it of items) {
+      const p = it.p;
+      let tt = t - p.t0;
+      if (tt < 0) { it.n.setAttribute('opacity', 0); continue; }
+      if (o.life) { const a = 1 - (tt / o.life); if (a <= 0) { it.n.setAttribute('opacity', 0); continue; } it.n.setAttribute('opacity', clamp(a * 3, 0, 1)); }
+      else it.n.setAttribute('opacity', 1);
+      if (o.loop) { tt = tt % o.loop; }
+      const y = p.y0 + p.vy * tt + Math.sin(tt * p.swF * 2.2 + p.ph) * 8;
+      const x = p.x0 + p.drift * tt * 0.1 + Math.sin(tt * p.swF + p.ph) * p.swA + (wind || 0) * p.windK;
+      const rot = p.rot0 + p.rotV * tt * 0.1;
+      const sc = 0.35 + 0.65 * Math.abs(Math.sin(tt * p.tumF + p.ph)); /* 2D tumble illusion */
+      it.n.setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y) + ') rotate(' + fmt(rot) + ') scale(' + fmt(sc) + ' 1)');
+    }
+  };
+  return g;
+}
+
+/* ---------------- dust puffs ---------------- */
+function makePuff(parent, o) {
+  /* one puff event: o {x,y,t0,n,scale,col,ry} */
+  const g = gp(parent, {});
+  const blobs = [];
+  for (let i = 0; i < (o.n || 6); i++) {
+    const b = {
+      dx: rr(-1, 1) * (o.sx || 40), dy: rr(-0.4, 0.25) * (o.sy || 26),
+      r: rr(8, 22) * (o.scale || 1), ph: rr(0, TAU),
+      op: rr(0.35, 0.7)
+    };
+    blobs.push(path(g, blobD(0, 0, b.r, b.r * 0.62, { irr: 0.5, n: 7 }), { fill: o.col || '#cfc3a2', opacity: 0 }));
+  }
+  const life = o.life || 1.5;
+  const fps = 8;
+  g.__update = function (t) {
+    const age = t - o.t0;
+    if (age < 0 || age > life) { g.setAttribute('opacity', 0); return; }
+    g.setAttribute('opacity', 1);
+    const k = age / life;
+    const kk = Math.floor(k * fps) / fps;
+    const grow = 0.5 + kk * 1.8;
+    for (let i = 0; i < blobs.length; i++) {
+      const dxi = Math.sin(i * 2.4 + 1) * (o.sx || 40);
+      const dyi = -Math.abs(Math.cos(i * 1.7)) * (o.sy || 26);
+      const x = o.x + dxi * grow * 0.9;
+      const y = o.y + dyi * grow * 0.8 + kk * 14;
+      blobs[i].setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y) + ') scale(' + fmt(grow) + ')');
+      blobs[i].setAttribute('opacity', fmt((0.55 - kk * 0.55) * (0.55 + hash1(i * 7 + Math.floor(t * fps)) * 0.4)));
+    }
+  };
+  return g;
+}
+
+/* ---------------- speed lines (gale burst) ---------------- */
+function makeSpeedLines(parent, o) {
+  const g = gp(parent, { style: 'mix-blend-mode:screen', filter: 'url(#b2)' });
+  const lines = [];
+  for (let i = 0; i < o.n; i++) {
+    const a = rr(o.a0, o.a1);
+    const r0 = o.r0 * rr(0.55, 1.15);
+    const len = rr(o.len0, o.len1);
+    const w = rr(2.5, 8);
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const d = ribbonD([[o.cx + dx * r0, o.cy + dy * r0], [o.cx + dx * (r0 + len * 0.6), o.cy + dy * (r0 + len * 0.6)], [o.cx + dx * (r0 + len), o.cy + dy * (r0 + len)]], w, w * 0.2);
+    lines.push(path(g, d, { fill: o.col || '#fff6dd', opacity: 0 }));
+  }
+  g.__update = function (t) {
+    const on = t >= o.t0 && t <= o.t1;
+    const fps = 12;
+    const fr = Math.floor(t * fps);
+    for (let i = 0; i < lines.length; i++) {
+      if (!on) { lines[i].setAttribute('opacity', 0); continue; }
+      const h = hash2(i * 13.7 + fr);
+      const env = clamp((t - o.t0) / 0.12, 0, 1) * clamp((o.t1 - t) / 0.5, 0, 1);
+      lines[i].setAttribute('opacity', fmt(h < 0.55 ? (0.25 + h * 0.5) * env : 0));
+    }
+  };
+  return g;
+}
+
+/* ---------------- birds (flying, deterministic paths) ---------------- */
+/* flight spec: {t0,t1, from:[x,y], ctrl:[[..],[..]], to:[x,y], flapFps} — cubic bezier */
+function birdFly(bird, t, spec) {
+  if (t < spec.t0 || t > spec.t1) { bird.setAttribute('opacity', 0); return; }
+  bird.setAttribute('opacity', 1);
+  const u = clamp((t - spec.t0) / (spec.t1 - spec.t0), 0, 1);
+  const e = spec.ease ? EZ[spec.ease](u) : u;
+  const p0 = spec.from, p1 = spec.c1, p2 = spec.c2, p3 = spec.to;
+  const x = (1 - e) ** 3 * p0[0] + 3 * (1 - e) ** 2 * e * p1[0] + 3 * (1 - e) * e * e * p2[0] + e ** 3 * p3[0];
+  const y = (1 - e) ** 3 * p0[1] + 3 * (1 - e) ** 2 * e * p1[1] + 3 * (1 - e) * e * e * p2[1] + e ** 3 * p3[1];
+  /* tangent for heading */
+  const dx = 3 * (1 - e) ** 2 * (p1[0] - p0[0]) + 6 * (1 - e) * e * (p2[0] - p1[0]) + 3 * e * e * (p3[0] - p2[0]);
+  const dy = 3 * (1 - e) ** 2 * (p1[1] - p0[1]) + 6 * (1 - e) * e * (p2[1] - p1[1]) + 3 * e * e * (p3[1] - p2[1]);
+  const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+  const fps = spec.flapFps || 9;
+  const fr = Math.floor(t * fps);
+  const cycle = [0, 1, 2, 1][fr % 4];
+  /* glide sometimes */
+  const glide = spec.glide && hash1(Math.floor(t / 0.8) * 3.1 + (spec.id || 0)) < 0.3;
+  bird.__flap(glide ? -1 : cycle);
+  const bob = Math.sin(t * 6 + (spec.id || 0)) * 3;
+  bird.setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y + bob) + ') rotate(' + fmt(clamp(ang, -35, 35) * 0.5) + ') scale(' + (spec.scale || 1) + ')');
+}
+
+/* ---------------- launch trail (curving beam of light + mist) ---------------- */
+function makeTrail(parent, pathPts, o) {
+  /* pathPts: sampled [x,y,tArrive] */
+  const g = gp(parent, {});
+  const glow = gp(g, { filter: 'url(#b8)', style: 'mix-blend-mode:screen' });
+  const core = gp(g, {});
+  const mist = gp(g, { filter: 'url(#b10)' });
+  const segs = [], cores = [], mists = [];
+  const step = o.step || 2;
+  for (let i = 0; i < pathPts.length - step; i += step) {
+    const a = pathPts[i], b = pathPts[i + step];
+    const u = i / pathPts.length;
+    const w = lerp(o.w0, o.w1, u);
+    segs.push(path(glow, ribbonD([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], b], w * 2.2, w * 2.0), { fill: o.col || '#ffe9b0', opacity: 0 }));
+    cores.push(path(core, ribbonD([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], b], w * 0.7, w * 0.6), { fill: '#fffdf2', opacity: 0 }));
+    if (i % 6 === 0) mists.push(path(mist, blobD(a[0], a[1], w * 1.6, w * 1.1, { irr: 0.5, n: 8 }), { fill: '#fdf6e2', opacity: 0 }));
+  }
+  g.__update = function (t) {
+    for (let i = 0; i < segs.length; i++) {
+      const tau = pathPts[Math.min(i * step, pathPts.length - 1)][2];
+      const age = t - tau;
+      if (age < 0) { segs[i].setAttribute('opacity', 0); cores[i].setAttribute('opacity', 0); continue; }
+      const a = clamp(1 - age / (o.fade || 2.8), 0, 1);
+      segs[i].setAttribute('opacity', fmt(a * 0.75));
+      cores[i].setAttribute('opacity', fmt(a * 0.95));
+    }
+    for (let i = 0; i < mists.length; i++) {
+      const idx = i * 6;
+      const tau = pathPts[Math.min(idx, pathPts.length - 1)][2];
+      const age = t - tau;
+      if (age < 0) { mists[i].setAttribute('opacity', 0); continue; }
+      const a = clamp(1 - age / (o.mistFade || 7), 0, 1);
+      const grow = 1 + age * 0.25;
+      mists[i].setAttribute('opacity', fmt(a * 0.5));
+      mists[i].setAttribute('transform', 'translate(' + fmt(pathPts[idx][0]) + ' ' + fmt(pathPts[idx][1]) + ') scale(' + fmt(grow) + ')');
+    }
+  };
+  return g;
+}
+
+/* ---------------- ground tremble / camera shake ---------------- */
+function shakeT(t, amp, fps) {
+  fps = fps || 10;
+  const fr = Math.floor(t * fps);
+  return [(hash1(fr) * 2 - 1) * amp, (hash2(fr) * 2 - 1) * amp];
+}
+
+/* ---------------- film grain tiles ---------------- */
+function grainDataURL(seed, size) {
+  size = size || 140;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const rnd = mulberry32(seed);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 118 + (rnd() * 74 - 37);
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 26 + rnd() * 26;
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv.toDataURL();
+}
+
+/* ============ shots.js : 7 cinematic shots, scene assembly ============ */
+'use strict';
+
+/* master camera-crop helper: place world coords (robot space) into frame */
+function camT(scale, wx, wy, sx, sy) {
+  /* screen = world*scale + T  where T = s - w*scale */
+  return 'translate(' + fmt(sx - wx * scale) + ' ' + fmt(sy - wy * scale) + ') scale(' + scale + ')';
+}
+/* maps torso-local coords -> world coords for a pose (hip translate + torso rotation) */
+function torsoXform(pose) {
+  const a = (pose.torso || 0) * Math.PI / 180, hip = pose.hip || 0, px = 0, py = -352;
+  return (x, y) => {
+    const dx = x - px, dy = y - py;
+    return [px + dx * Math.cos(a) - dy * Math.sin(a), py + dx * Math.sin(a) + dy * Math.cos(a) + hip];
+  };
+}
+function screenOf(scale, ax, ay, sx, sy, wx, wy) {
+  return [sx + (wx - ax) * scale, sy + (wy - ay) * scale];
+}
+
+const SHOTS = [];
+let ROOT, STAGE;
+let robMain, robClose2, robClose3, robFar;
+let heroBird;
+const sways = [];    /* {node, subs, amp, freq, ph, q} */
+const mistsDrift = []; /* {node, speed, span} */
+const shimmerRays = []; /* ray groups */
+const wind = { base: 4, gust: 0 }; /* gust envelope set per frame */
+
+function swayReg(node, o) { sways.push(Object.assign({ node, amp: 3, freq: 0.5, ph: rr(0, TAU), q: 8 }, o)); }
+
+/* ============================================================
+   SHOT 1 — establishing wide: misty forest, kneeling robot
+============================================================ */
+function buildShot1() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 0.0, t1: 10.0, node: g, update: updateShot1 });
+
+  sky(g, DEFS, [[0, '#5f93a8'], [0.3, '#9dc0b6'], [0.55, '#ddd0a0'], [0.78, '#f6e6b2'], [1, '#fff2cd']]);
+  sunGlow(g, DEFS, 1250, 430, 560, '#fff8e0', '#ffe096', 0.55);
+  sunGlow(g, DEFS, 1250, 430, 200, '#ffffff', '#fff0c8', 0.75);
+
+  /* far haze forest */
+  farTrees(g, 700, 260, '#9db8a6');
+  farTrees(g, 760, 200, '#b3c4ab');
+  /* mid trees */
+  treeMid(g, { x: 180, baseY: 880, h: 620, leaf: '#5a7d58', leafD: '#48684a' });
+  treeMid(g, { x: 420, baseY: 870, h: 500, leaf: '#63855c', leafD: '#4d6f50' });
+  treeMid(g, { x: 620, baseY: 860, h: 420, leaf: '#6d8d5e', leafD: '#557a52' });
+  treeMid(g, { x: 1520, baseY: 880, h: 560, leaf: '#63855c', leafD: '#4d6f50' });
+  treeMid(g, { x: 1760, baseY: 870, h: 640, leaf: '#5a7d58', leafD: '#48684a' });
+  treeMid(g, { x: 960, baseY: 850, h: 330, leaf: '#7a9765', leafD: '#5f8155' });
+  treeMid(g, { x: 1180, baseY: 845, h: 300, leaf: '#86a068', leafD: '#68885a' });
+
+  /* ground */
+  ground(g, { y: 852, pool: { x: 860, y: 905, rx: 300, ry: 46, c: '#ffe9b0' } });
+  const gr1 = grassRow(g, { x0: -20, x1: 1960, y: 866, n: 60, h: 26 });
+  swayReg(gr1, { amp: 4, freq: 0.4, y: 866 });
+  const gr2 = grassRow(g, { x0: -20, x1: 1960, y: 980, n: 70, h: 46 });
+  swayReg(gr2, { amp: 6, freq: 0.35, y: 980 });
+  fernClump(g, 340, 890, 40, PAL);
+  fernClump(g, 1180, 930, 52, PAL);
+  fernClump(g, 1620, 960, 46, PAL);
+
+  /* distant robot — kneeling, mossy */
+  const robWrap = gp(g, {});
+  const cam = gp(robWrap, { transform: camT(0.36, 0, 0, 700, 864) });
+  robFar = makeRobot('rf', { detail: false });
+  robFar.root.setAttribute('opacity', 0.94);
+  /* dusk-dim + warm rim, hand-applied (robot-space coords, inherited cam scale) */
+  const dim = gp(robWrap, { transform: camT(0.36, 0, 0, 700, 864) });
+  cam.appendChild(robFar.root);
+  robFar.set(POSES.kneel);
+  robFar.setEyes(0);
+  robFar.setCore(0);
+  const rim = gp(dim, {});
+  path(rim, 'M 56 -606 q 30 -22 40 -48', { stroke: '#ffd9a0', 'stroke-width': 4, fill: 'none', opacity: 0.8 });
+  path(rim, 'M 150 -548 q 24 -12 36 -8', { stroke: '#ffd9a0', 'stroke-width': 3.4, fill: 'none', opacity: 0.7 });
+  /* contact shadow */
+  el('ellipse', { cx: 700, cy: 868, rx: 100, ry: 15, fill: '#2c3a30', opacity: 0.4, filter: 'url(#b4)' }, robWrap);
+
+  /* mist layers */
+  const m1 = mistBand(g, { x: 960, y: 760, w: 2200, h: 70, n: 10, a: 0.5, c: PAL.mistWarm });
+  const m2 = mistBand(g, { x: 960, y: 842, w: 2200, h: 46, n: 12, a: 0.42, c: PAL.mist });
+  const m3 = mistBand(g, { x: 960, y: 930, w: 2200, h: 60, n: 9, a: 0.3, c: PAL.mist });
+  mistsDrift.push({ node: m1, speed: 9, span: 400 }, { node: m2, speed: 14, span: 400 }, { node: m3, speed: 6, span: 300 });
+
+  /* god rays from canopy gap */
+  const rg = rays(g, { cx: 1210, cy: 360, ang: 2.28, n: 6, len: 640, w: 60, spread: 130 });
+  shimmerRays.push(rg);
+  const rg2 = rays(g, { cx: 1290, cy: 300, ang: 2.35, n: 4, len: 460, w: 30, spread: 70 });
+  shimmerRays.push(rg2);
+
+  /* canopy top + framing trunks */
+  canopyTop(g, { x0: -100, x1: 2050, y: -40, range: 130, dabs: 30, rim: '#d9cf7e' });
+  const tL = trunkFore(g, { x: 90, w: 150, top: -60, baseY: 1060, side: -1, lit: '#c9a86a', vine: true });
+  const tR = trunkFore(g, { x: 1850, w: 170, top: -80, baseY: 1080, side: 1, lit: '#d9b578', vine: true });
+  swayReg(tL, { amp: 0.8, freq: 0.3, cx: 90, cy: 1060 });
+  swayReg(tR, { amp: 0.8, freq: 0.26, cx: 1850, cy: 1080 });
+
+  /* distant birds crossing */
+  const b1 = makeBird(0.8, { back: '#6f6752' });
+  g.appendChild(b1);
+  const b2 = makeBird(0.62, { back: '#7a7260' });
+  g.appendChild(b2);
+  g.__b1 = b1; g.__b2 = b2;
+
+  /* ambient drifting leaves */
+  const lv = makeLeaves(g, 7, { x0: 200, w: 1500, y0: 500, h: 300, vy0: 26, vy1: 44, swA0: 24, swA1: 60, s0: 7, s1: 12, loop: 26 });
+  g.__leaves = lv;
+  return g;
+}
+function updateShot1(t) {
+  const g = SHOTS[0].node;
+  g.__leaves.__update(t, wind.base);
+  birdFly(g.__b1, t, { t0: 3.2, t1: 8.6, from: [-40, 420], c1: [420, 330], c2: [900, 470], to: [1500, 330], scale: 0.8, flapFps: 8, glide: true, id: 1 });
+  birdFly(g.__b2, t, { t0: 5.4, t1: 9.6, from: [1960, 500], c1: [1500, 420], c2: [1100, 560], to: [620, 470], scale: 0.62, flapFps: 7, glide: true, id: 2 });
+  /* faint idle: the old machine breathes almost nothing */
+  const br = Math.sin(t * 0.9) * 0.7;
+  robFar.set(Object.assign({}, POSES.kneel, { torso: POSES.kneel.torso + br }));
+}
+
+/* ============================================================
+   SHOT 2 — shoulder close-up, bird lands
+============================================================ */
+function buildShot2() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 10.0, t1: 16.2, node: g, update: updateShot2 });
+
+  bokehBg(g, DEFS, { base: '#b8c4a2', n: 16, cols: ['#8ba06f', '#a3b57c', '#79966b', '#c2c488', '#93ab74'], bokeh: 10, sun: '#ffeec2' });
+  /* soft light wedge */
+  const wedge = gp(g, { filter: 'url(#b14)', style: 'mix-blend-mode:screen' });
+  path(wedge, 'M 1400 -100 L 2000 -160 L 2100 900 L 1500 800 Z', { fill: 'rgba(255,240,200,0.5)' });
+
+  /* robot shoulder: pose-aware anchor on the pauldron moss bed */
+  const wf2 = torsoXform(POSES.kneel);
+  const anc2 = wf2(110, -556);           /* pauldron top in world */
+  const cam = gp(g, {});
+  cam.setAttribute('transform', camT(2.35, anc2[0], anc2[1], 1300, 560));
+  const mossW = wf2(96, -556);
+  g.__landP = screenOf(2.35, anc2[0], anc2[1], 1300, 560, mossW[0], mossW[1]);
+  g.__landP[1] -= 10;
+  robClose2 = makeRobot('r2', { detail: true });
+  cam.appendChild(robClose2.root);
+  robClose2.set(POSES.kneel);
+  robClose2.setEyes(0);
+  robClose2.setCore(0);
+  /* extra near-camera moss + lichen on pauldron */
+  const xtra = gp(cam, {});
+  mossPatch(xtra, 150, -556, 16, 8);
+  mossPatch(xtra, 66, -486, 10, 6, { op: 0.85 });
+  rustRun(xtra, 176, -522, 60, 5);
+  /* soft focus foreground leaves (top-left corner) */
+  const fg = gp(g, { filter: 'url(#b8)' });
+  for (let i = 0; i < 5; i++) {
+    path(fg, leafD(rr(26, 44)), {
+      fill: '#3d5638', opacity: 0.85,
+      transform: 'translate(' + fmt(rr(-30, 240)) + ' ' + fmt(rr(-40, 90)) + ') rotate(' + fmt(rr(90, 200)) + ')'
+    });
+  }
+  path(fg, vineD(40, -30, 210, 140, 3, 26), { stroke: '#3d5638', 'stroke-width': 10, fill: 'none', opacity: 0.85, 'stroke-linecap': 'round' });
+
+  /* hero bird */
+  heroBird = makeBird(2.6, {});
+  g.appendChild(heroBird);
+  g.__bird = heroBird;
+  return g;
+}
+function updateShot2(t) {
+  const g = SHOTS[1].node;
+  const b = g.__bird;
+  /* bird choreography — lands on the pauldron moss bed */
+  const landP = g.__landP;
+  if (t < 11.9) {
+    birdFly(b, t, { t0: 10.15, t1: 11.9, from: [140, 260], c1: [480, 120], c2: [880, 300], to: landP, scale: 2.6, flapFps: 11, ease: 'io2', id: 7 });
+    /* flare right before touchdown handled by pose below */
+  } else {
+    /* settled: micro hops & head turns via stepped offsets */
+    const seg = t - 11.9;
+    let dx = 0, dy = 0, rot = 0, chirp = false;
+    if (seg < 0.25) { dy = 6 * (1 - seg * 4); }            /* landing bounce */
+    else if (seg < 1.15) { dy = Math.abs(Math.sin(seg * 22)) * 1.5; }
+    else if (seg < 1.9) { dx = lerp(0, 34, clamp((seg - 1.15) / 0.75, 0, 1)); dy = -Math.abs(Math.sin(seg * 30)) * 2.2; } /* hop */
+    else if (seg < 2.5) { /* head turn pause */ }
+    else if (seg < 3.4) { chirp = Math.floor(seg * 9) % 3 !== 0; rot = -8; }
+    else if (seg < 4.1) { dx = 34 + lerp(0, -20, clamp((seg - 3.4) / 0.7, 0, 1)); dy = -Math.abs(Math.sin(seg * 30)) * 2; }
+    else { dy = Math.sin(seg * 2.2) * 1.2; }
+    const fr = Math.floor(t * 8);
+    const jx = (hash1(fr) - 0.5) * 1.2, jy = (hash2(fr) - 0.5) * 1.2;
+    b.setAttribute('transform', 'translate(' + fmt(landP[0] + dx + jx) + ' ' + fmt(landP[1] + dy + jy) + ') rotate(' + fmt(rot) + ') scale(2.6)');
+    b.__flap(-1);
+    b.__chirp(chirp);
+  }
+}
+
+/* ============================================================
+   SHOT 3 — face close-up, first light + eyes flicker
+============================================================ */
+function buildShot3() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 16.2, t1: 23.0, node: g, update: updateShot3 });
+
+  bokehBg(g, DEFS, { base: '#c3c39b', n: 15, cols: ['#9aab72', '#b1ba78', '#87a069', '#cfc887', '#a4b479'], bokeh: 12, sun: '#ffedb8' });
+
+  /* face crop: pose-aware anchor between the eyes */
+  const wf3 = torsoXform(POSES.kneel);
+  const anc3 = wf3(34, -606);
+  const cam = gp(g, {});
+  cam.setAttribute('transform', camT(2.6, anc3[0], anc3[1], 1120, 560));
+  robClose3 = makeRobot('r3', { detail: true });
+  cam.appendChild(robClose3.root);
+  robClose3.set(POSES.kneel);
+  robClose3.setEyes(0);
+  robClose3.setCore(0);
+  /* extra weathering near cam */
+  const xtra = gp(cam, {});
+  scratches(xtra, 0, -620, 8, 60);
+  chips(xtra, -30, -600, 4, 30);
+  rustRun(xtra, -20, -584, 40, 3.4);
+  mossPatch(xtra, -40, -646, 16, 8);
+  flowerCluster(xtra, 4, -672, 2, 5, ['#f2e6d8']);
+
+  /* sweeping light wedge across the face */
+  const sweep = gp(g, { style: 'mix-blend-mode:screen', filter: 'url(#b10)' });
+  const sw = path(sweep, 'M 0 0 L 260 -40 L 420 300 L 160 360 Z', { fill: 'rgba(255,238,190,0.55)' });
+  g.__sweep = sw;
+  /* dust motes */
+  const motes = gp(g, {});
+  const mitems = [];
+  for (let i = 0; i < 26; i++) {
+    const m = { x: rr(300, 1700), y: rr(100, 1000), ph: rr(0, TAU), sp: rr(4, 12), r: rr(1.6, 3.6) };
+    mitems.push({ m, n: el('circle', { cx: 0, cy: 0, r: m.r, fill: '#fff3cf', opacity: 0 }, motes) });
+  }
+  g.__motes = mitems;
+  /* foreground bokeh disc */
+  el('circle', { cx: 320, cy: 880, r: 130, fill: 'rgba(255,236,190,0.14)', filter: 'url(#b14)', style: 'mix-blend-mode:screen' }, g);
+  return g;
+}
+function updateShot3(t) {
+  const g = SHOTS[2].node;
+  /* sweep across 17.2-19.2 */
+  const su = clamp((t - 17.2) / 2.0, 0, 1);
+  g.__sweep.setAttribute('transform', 'translate(' + fmt(lerp(1500, -300, EZ.sm(su))) + ' ' + fmt(lerp(-140, 80, EZ.sm(su))) + ') rotate(-8)');
+  g.__sweep.setAttribute('opacity', su < 1 ? 1 : 0);
+  /* motes drift */
+  for (const it of g.__motes) {
+    const m = it.m;
+    const x = m.x + Math.sin(t * 0.24 + m.ph) * 26;
+    const y = m.y - (t * m.sp) % 900 + 450;
+    const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * 1.3 + m.ph));
+    it.n.setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y) + ')');
+    it.n.setAttribute('opacity', fmt(tw * 0.5));
+  }
+  /* eye flicker: subtle at 19.4, alive at 21.4 */
+  let ev = 0;
+  if (t > 19.4) {
+    const fr = Math.floor((t - 19.4) * 9);
+    const seq = [0, 0, .55, .1, 0, 0, .3, 0, 0, 0, .5, .15, 0, 0, .75, .4, .6, .8, .85, .9, 1, 1, 1, 1, 1, 1];
+    ev = seq[Math.min(fr, seq.length - 1)];
+  }
+  robClose3.setEyes(ev, 0.8 + ev * 0.5);
+  /* micro head raise at the end */
+  const hu = clamp((t - 21.9) / 1.0, 0, 1);
+  robClose3.set(Object.assign({}, POSES.kneel, { head: POSES.kneel.head - EZ.io2(hu) * 6, torso: POSES.kneel.torso - EZ.io2(hu) * 1.5 }));
+  /* faint core awakening at the very end */
+  robClose3.setCore(clamp((t - 22.2) / 0.8, 0, 1) * 0.25);
+}
+
+/* ============================================================
+   SHOT 4 — chest core pulses, ground trembles, birds startle
+============================================================ */
+function buildShot4() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 23.0, t1: 28.0, node: g, update: updateShot4 });
+
+  sky(g, DEFS, [[0, '#6c9dab'], [0.4, '#a9c2b0'], [0.75, '#e8d8a4'], [1, '#f9eab8']]);
+  sunGlow(g, DEFS, 1420, 330, 420, '#fff7dd', '#ffe19b', 0.4);
+  treeMid(g, { x: 150, baseY: 946, h: 640, leaf: '#5a7d58', leafD: '#48684a' });
+  treeMid(g, { x: 1680, baseY: 946, h: 700, leaf: '#5a7d58', leafD: '#48684a' });
+  treeMid(g, { x: 460, baseY: 936, h: 480, leaf: '#6d8d5e', leafD: '#557a52' });
+  treeMid(g, { x: 1420, baseY: 930, h: 430, leaf: '#7a9765', leafD: '#5f8155' });
+  const treetopBirds = gp(g, {});
+  g.__startle = [];
+  for (let i = 0; i < 7; i++) {
+    const b = makeBird(0.75 + rr(0, 0.3), { back: '#5d5747', wing: '#4c4639' });
+    treetopBirds.appendChild(b);
+    g.__startle.push(b);
+  }
+  ground(g, { y: 948, pool: { x: 900, y: 1000, rx: 340, ry: 44, c: '#ffe9b0' } });
+  const gr = grassRow(g, { x0: -20, x1: 1960, y: 966, n: 46, h: 30 });
+  swayReg(gr, { amp: 4, freq: 0.4, y: 966 });
+
+  /* robot torso crop: world origin (ground) -> (892, 950) */
+  const mount = gp(g, {});
+  g.__mount = mount;
+  const cam = gp(mount, {});
+  cam.setAttribute('transform', camT(1.18, 0, 0, 892, 950));
+  g.__cam = cam;
+  /* mist */
+  const m = mistBand(g, { x: 960, y: 930, w: 2200, h: 60, n: 8, a: 0.3 });
+  mistsDrift.push({ node: m, speed: 10, span: 300 });
+  const rg = rays(g, { cx: 1380, cy: 330, ang: 2.4, n: 4, len: 560, w: 46, spread: 90 });
+  shimmerRays.push(rg);
+  canopyTop(g, { x0: -100, x1: 2050, y: -60, range: 100, dabs: 20, rim: '#d9cf7e' });
+
+  /* shake-off leaves (spawn from armor) */
+  const lv = makeLeaves(g, 9, { x0: 790, w: 300, y0: 400, h: 170, vy0: 90, vy1: 150, swA0: 16, swA1: 34, s0: 7, s1: 11, t0: 24.1, tSpread: 2.2, life: 4 });
+  g.__leaves = lv;
+  return g;
+}
+function updateShot4(t) {
+  const g = SHOTS[3].node;
+  /* keep main robot here */
+  mountRobot(g.__cam, 'translate(0 0) scale(0.9)', 's4');
+  /* pulses */
+  let cv = 0;
+  if (t > 23.6) {
+    const seq = [0, .18, .3, .22, .38, .5, .42, .6, .78, .6, .85, 1, .8, 1, 1, 1];
+    cv = seq[Math.min(Math.floor((t - 23.6) * 6), seq.length - 1)];
+  }
+  robMain.setCore(cv);
+  robMain.setEyes(clamp((t - 26.4) / 1.2, 0, 1) * 0.85, 1);
+  /* vine jump on pulses */
+  const j = cv > 0.7 ? -3 : 0;
+  g.__cam.setAttribute('transform', camT(1.18, 0, 0, 892, 950 + j));
+  /* tremble grows */
+  const amp = clamp((t - 24.2) / 3.0, 0, 1) * 3.2;
+  const sh = shakeT(t * 1.7, amp, 11);
+  g.__mount.setAttribute('transform', 'translate(' + fmt(sh[0]) + ' ' + fmt(sh[1]) + ')');
+  g.__leaves.__update(t, wind.base);
+  /* birds startle at 25.3 */
+  for (let i = 0; i < g.__startle.length; i++) {
+    const b = g.__startle[i];
+    const t0 = 25.25 + i * 0.13;
+    birdFly(b, t, {
+      t0, t1: t0 + 2.6,
+      from: [180 + i * 240, 300 + (i % 2) * 90],
+      c1: [300 + i * 200, 140 + (i % 3) * 60], c2: [520 + i * 170, 40 + (i % 2) * 50],
+      to: [700 + i * 190, -60 - i * 30],
+      scale: 0.7 + (i % 3) * 0.12, flapFps: 12, ease: 'o2', id: 10 + i
+    });
+  }
+}
+
+/* ============================================================
+   SHOT 5 — THE RISE (pose-to-pose with stepped in-betweens)
+============================================================ */
+const RISE_SEGS = [
+  { t0: 28.0, t1: 29.3, a: 'kneel', b: 'kneel' },
+  { t0: 29.3, t1: 30.15, a: 'kneel', b: 'plant', fps: 7, ez: 'i2' },
+  { t0: 30.15, t1: 31.05, a: 'plant', b: 'plant' },
+  { t0: 31.05, t1: 32.75, a: 'plant', b: 'push', fps: 7, ez: 'i3' },
+  { t0: 32.75, t1: 33.35, a: 'push', b: 'push' },
+  { t0: 33.35, t1: 34.75, a: 'push', b: 'half', fps: 8, ez: 'io2' },
+  { t0: 34.75, t1: 35.15, a: 'half', b: 'half' },
+  { t0: 35.15, t1: 36.35, a: 'half', b: 'stand', fps: 8, ez: 'o2' },
+  { t0: 36.35, t1: 36.75, a: 'stand', b: 'stand' },
+  { t0: 36.75, t1: 37.6, a: 'stand', b: 'look', fps: 7, ez: 'io2' }
+];
+function risePose(t) {
+  for (const s of RISE_SEGS) {
+    if (t >= s.t0 && t < s.t1) {
+      let u = (t - s.t0) / (s.t1 - s.t0);
+      if (s.fps) {
+        const tq = s.t0 + Math.floor((t - s.t0) * s.fps) / s.fps;
+        u = clamp((tq - s.t0) / (s.t1 - s.t0), 0, 1);
+      }
+      const e = EZ[s.ez || 'linear'](u);
+      const p = lerpPose(POSES[s.a], POSES[s.b], e);
+      /* micro hand-drawn jitter while moving */
+      if (s.a !== s.b) {
+        const fr = Math.floor(t * 9);
+        p.torso += (hash1(fr) - 0.5) * 0.7;
+        p.head += (hash2(fr) - 0.5) * 0.9;
+      } else {
+        p.torso += Math.sin(t * 0.9) * 0.7; /* breath */
+      }
+      return p;
+    }
+  }
+  return POSES.look;
+}
+function buildShot5() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 28.0, t1: 37.6, node: g, update: updateShot5 });
+
+  sky(g, DEFS, [[0, '#5f93a8'], [0.3, '#9dc0b6'], [0.55, '#ded1a0'], [0.8, '#f7e7b2'], [1, '#fff3cd']]);
+  sunGlow(g, DEFS, 1520, 330, 520, '#fff8e0', '#ffe298', 0.5);
+  treeMid(g, { x: 120, baseY: 940, h: 720, leaf: '#557854', leafD: '#446246' });
+  treeMid(g, { x: 380, baseY: 930, h: 560, leaf: '#63855c', leafD: '#4d6f50' });
+  treeMid(g, { x: 1740, baseY: 930, h: 660, leaf: '#5a7d58', leafD: '#48684a' });
+  treeMid(g, { x: 1560, baseY: 920, h: 460, leaf: '#6d8d5e', leafD: '#557a52' });
+  farTrees(g, 880, 150, '#a9bfa9');
+
+  ground(g, { y: 946, pool: { x: 1180, y: 990, rx: 320, ry: 40, c: '#ffeab2' } });
+  /* churned earth patch under robot */
+  const churn = gp(g, {});
+  path(churn, blobD(940, 962, 250, 30, { irr: 0.4, n: 9 }), { fill: '#3f3a2c', opacity: 0.55 });
+  for (let i = 0; i < 10; i++) {
+    path(churn, blobD(760 + rr(0, 380), 950 + rr(0, 30), rr(6, 16), rr(3, 6), { irr: 0.5, n: 6 }),
+      { fill: _R() < 0.5 ? '#544c38' : '#6b5c45', opacity: 0.9 });
+  }
+  const grB = grassRow(g, { x0: -20, x1: 1960, y: 968, n: 40, h: 24 });
+  swayReg(grB, { amp: 3.5, freq: 0.4, y: 968 });
+  const grF = grassRow(g, { x0: -20, x1: 1960, y: 1058, n: 60, h: 52 });
+  swayReg(grF, { amp: 6, freq: 0.33, y: 1058 });
+  fernClump(g, 260, 1000, 56, PAL);
+  fernClump(g, 1620, 1020, 60, PAL);
+  flowerCluster(g, 1180, 1000, 5, 7, ['#f5ead9', '#e8b7c2']);
+
+  const rg = rays(g, { cx: 1450, cy: 320, ang: 2.35, n: 5, len: 640, w: 60, spread: 120 });
+  shimmerRays.push(rg);
+  canopyTop(g, { x0: -100, x1: 2050, y: -70, range: 110, dabs: 24, rim: '#d9cf7e' });
+  const m = mistBand(g, { x: 960, y: 960, w: 2200, h: 54, n: 8, a: 0.3 });
+  mistsDrift.push({ node: m, speed: 9, span: 300 });
+
+  const mount = gp(g, {});
+  g.__mount = mount;
+  g.__cam = gp(mount, { transform: camT(1.0, 30, 0, 900, 990) });
+
+  /* cascading debris: soil chunks + leaf clumps falling off body */
+  const debris = gp(g, {});
+  g.__debris = [];
+  const DEBRIS_EV = [
+    { t0: 29.5, n: 5 }, { t0: 31.1, n: 6 }, { t0: 32.85, n: 7 }, { t0: 33.5, n: 8 }, { t0: 35.3, n: 6 }
+  ];
+  let di = 0;
+  for (const ev of DEBRIS_EV) {
+    for (let i = 0; i < ev.n; i++) {
+      const isLeaf = _R() < 0.55;
+      const p = {
+        t0: ev.t0 + rr(0, 0.7),
+        x0: 800 + rr(-110, 240), y0: rr(240, 660),
+        vx: rr(-40, 90), vy: rr(-60, -10),
+        g: 1500, rotV: rr(-300, 300), rot0: rr(0, 360),
+        bounceY: 962 + rr(-6, 14), e: rr(0.2, 0.38)
+      };
+      const n = isLeaf
+        ? (() => { const lg = gp(debris, {}); path(lg, leafD(rr(6, 11)), { fill: pick(['#7d9c54', '#93ac5e', '#b08f4e']) }); return lg; })()
+        : (() => { const lg = gp(debris, {}); path(lg, blobD(0, 0, rr(4, 9), rr(3, 6), { irr: 0.5, n: 6 }), { fill: pick(['#544c38', '#6b5c45', '#7ba050']) }); return lg; })();
+      g.__debris.push({ p, n, isLeaf });
+      di++;
+    }
+  }
+  /* dust puffs at push moments */
+  g.__puffs = [];
+  for (const pt of [29.6, 31.15, 32.9, 33.55, 35.35, 36.4]) {
+    const pf = makePuff(g, { x: 880 + rr(-70, 110), y: 960 + rr(-8, 8), t0: pt, n: 7, sx: 70, sy: 32, scale: 1.35, col: '#d8cba6', life: 1.6 });
+    g.__puffs.push(pf);
+  }
+  /* vine sliding off — separate falling vine group */
+  const fvine = gp(g, {});
+  g.__fvine = fvine;
+  path(fvine, vineD(0, 0, 30, 90, 3, 14), { stroke: '#4c6b3a', 'stroke-width': 3, fill: 'none' });
+  for (let i = 0; i < 5; i++) {
+    const pt = vinePoint(vineD(0, 0, 30, 90, 3, 14), (i + 0.5) / 5);
+    path(fvine, leafD(8), { fill: '#628a4a', transform: 'translate(' + fmt(pt[0]) + ' ' + fmt(pt[1]) + ') rotate(' + fmt(rr(-60, 60)) + ')' });
+  }
+  fvine.setAttribute('opacity', 0);
+  return g;
+}
+function updateShot5(t) {
+  const g = SHOTS[4].node;
+  mountRobot(g.__cam, 'translate(0 0) scale(1.3)', 's5');
+  robMain.set(risePose(t));
+  robMain.setEyes(clamp((t - 33) / 3, 0, 1) * 0.9, 1);
+  robMain.setCore(0.4 + 0.25 * Math.sin(t * 2.1));
+  if (t > 35.6) robMain.dropVines();
+  /* debris physics with one bounce */
+  for (const d of g.__debris) {
+    const p = d.p;
+    const age = t - p.t0;
+    if (age < 0) { d.n.setAttribute('opacity', 0); continue; }
+    d.n.setAttribute('opacity', 1);
+    let x = p.x0 + p.vx * age;
+    let y = p.y0 + p.vy * age + 0.5 * p.g * age * age;
+    if (y > p.bounceY) {
+      /* reflect: time to hit */
+      const disc = p.vy * p.vy + 2 * p.g * (p.bounceY - p.y0);
+      const tHit = (-p.vy + Math.sqrt(Math.max(0, disc))) / p.g;
+      const a2 = age - tHit;
+      if (a2 > 0) {
+        const vy2 = p.vy + p.g * tHit;
+        x = p.x0 + p.vx * tHit + p.vx * 0.5 * a2;
+        y = p.bounceY - (vy2 * p.e * a2 - 0.5 * p.g * a2 * a2) * 0.5;
+        if (y > p.bounceY) y = p.bounceY;
+      }
+    }
+    const rot = p.rot0 + p.rotV * age * (d.isLeaf ? 1 : 0.4);
+    d.n.setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y) + ') rotate(' + fmt(rot) + ')');
+  }
+  for (const pf of g.__puffs) pf.__update(t);
+  /* falling vine 33.6-35.2 */
+  const fv = g.__fvine;
+  const fa = clamp((t - 33.6) / 1.6, 0, 1);
+  if (fa > 0 && fa < 1) {
+    fv.setAttribute('opacity', 1 - fa * 0.5);
+    fv.setAttribute('transform', 'translate(' + fmt(860 + fa * 50) + ' ' + fmt(lerp(380, 950, fa * fa)) + ') rotate(' + fmt(fa * 120) + ')');
+  } else fv.setAttribute('opacity', 0);
+  /* subtle shake on pushes */
+  const amp = (t > 32.75 && t < 33.3) ? 2.4 : (t > 35.15 && t < 35.7 ? 1.8 : (t > 31.0 && t < 32.7 ? 1.1 : 0));
+  if (amp) {
+    const sh = shakeT(t * 1.3, amp, 10);
+    g.__mount.setAttribute('transform', 'translate(' + fmt(sh[0]) + ' ' + fmt(sh[1]) + ')');
+  } else g.__mount.setAttribute('transform', 'translate(0 0)');
+}
+
+/* ============================================================
+   SHOT 6 — ignition: engines roar, gale sweeps the forest
+============================================================ */
+function buildShot6() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 37.6, t1: 42.6, node: g, update: updateShot6 });
+
+  sky(g, DEFS, [[0, '#5f93a8'], [0.35, '#a3c2b2'], [0.62, '#e0d2a0'], [0.85, '#f8e8b2'], [1, '#fff3cd']]);
+  sunGlow(g, DEFS, 1500, 320, 480, '#fff8e0', '#ffe298', 0.45);
+  treeMid(g, { x: 150, baseY: 950, h: 700, leaf: '#557854', leafD: '#446246' });
+  treeMid(g, { x: 420, baseY: 945, h: 540, leaf: '#63855c', leafD: '#4d6f50' });
+  treeMid(g, { x: 1700, baseY: 945, h: 660, leaf: '#5a7d58', leafD: '#48684a' });
+  treeMid(g, { x: 1460, baseY: 935, h: 440, leaf: '#6d8d5e', leafD: '#557a52' });
+  ground(g, { y: 952 });
+  const churn = gp(g, {});
+  path(churn, blobD(930, 964, 260, 30, { irr: 0.4, n: 9 }), { fill: '#3f3a2c', opacity: 0.55 });
+  const grB = grassRow(g, { x0: -20, x1: 1960, y: 972, n: 36, h: 24 });
+  swayReg(grB, { amp: 3, freq: 0.4, y: 972 });
+  /* foreground grass — bends hard in gale */
+  const grF = grassRow(g, { x0: -20, x1: 1960, y: 1074, n: 80, h: 64 });
+  swayReg(grF, { amp: 7, freq: 0.35, gale: true, y: 1074 });
+  fernClump(g, 220, 1010, 60, PAL);
+  fernClump(g, 1660, 1030, 64, PAL);
+
+  const mount = gp(g, {});
+  g.__mount = mount;
+  g.__cam = gp(mount, { transform: camT(1.06, 30, 0, 930, 958) });
+  /* ignition flash overlay */
+  g.__flash = el('rect', { x: -40, y: -40, width: 2000, height: 1160, fill: '#fff2cf', opacity: 0, style: 'mix-blend-mode:screen' }, g);
+
+  /* engine under-glow */
+  const glowG = gp(g, { style: 'mix-blend-mode:screen' });
+  const under = el('ellipse', { cx: 930, cy: 962, rx: 200, ry: 32, fill: '#ffcf7a', opacity: 0, filter: 'url(#b10)' }, glowG);
+  const under2 = el('ellipse', { cx: 930, cy: 962, rx: 90, ry: 16, fill: '#fff3cf', opacity: 0, filter: 'url(#b8)' }, glowG);
+  g.__under = under; g.__under2 = under2;
+  /* stack vent glow (behind robot, over shoulder) */
+  const vent = el('circle', { cx: 810, cy: 248, r: 36, fill: '#ffdd96', opacity: 0, filter: 'url(#b8)' }, glowG);
+  g.__vent = vent;
+
+  /* dust ring */
+  const ring = el('ellipse', { cx: 930, cy: 954, rx: 60, ry: 14, fill: 'none', stroke: '#e2d4ac', 'stroke-width': 10, opacity: 0, filter: 'url(#b4)' }, g);
+  g.__ring = ring;
+
+  /* speed lines radial from robot base */
+  const sl = makeSpeedLines(g, { cx: 930, cy: 920, r0: 260, a0: 2.6, a1: 6.8, len0: 160, len1: 420, n: 30, t0: 38.9, t1: 40.6 });
+  g.__sl = sl;
+  /* blasting leaves */
+  const blast = makeLeaves(g, 22, { x0: 700, w: 480, y0: 700, h: 240, vy0: -160, vy1: -60, swA0: 40, swA1: 90, s0: 7, s1: 13, t0: 38.95, tSpread: 0.9, life: 3.4 });
+  g.__blast = blast;
+
+  canopyTop(g, { x0: -100, x1: 2050, y: -70, range: 110, dabs: 20, rim: '#d9cf7e' });
+  return g;
+}
+function updateShot6(t) {
+  const g = SHOTS[5].node;
+  mountRobot(g.__cam, 'translate(0 0) scale(1.0)', 's6');
+  /* braced pose with tremble */
+  const p = Object.assign({}, POSES.ign);
+  const ampT = clamp((t - 38.2) / 0.7, 0, 1);
+  const fr = Math.floor(t * 12);
+  p.torso += (hash1(fr) - 0.5) * 1.6 * ampT;
+  p.head += (hash2(fr) - 0.5) * 2 * ampT;
+  robMain.set(p);
+  robMain.setEyes(1, 1.15);
+  robMain.setCore(0.85 + 0.15 * Math.sin(t * 9));
+  /* under-glow ramps */
+  const gl = clamp((t - 38.0) / 0.9, 0, 1);
+  const flick = 0.85 + 0.15 * hash1(Math.floor(t * 14));
+  g.__under.setAttribute('opacity', fmt(gl * 0.55 * flick));
+  g.__under2.setAttribute('opacity', fmt(gl * 0.75 * flick));
+  g.__vent.setAttribute('opacity', fmt(gl * 0.5 * flick));
+  /* flash at ignition 38.9 */
+  const fa = t > 38.9 && t < 39.5 ? [0.4, 0.15, 0.3, 0.1][Math.floor((t - 38.9) * 10) % 4] : 0;
+  g.__flash.setAttribute('opacity', fmt(fa));
+  /* dust ring expands */
+  const ra = clamp((t - 38.9) / 2.2, 0, 1);
+  g.__ring.setAttribute('opacity', fmt((1 - ra) * 0.7));
+  g.__ring.setAttribute('rx', fmt(60 + ra * 700));
+  g.__ring.setAttribute('ry', fmt(14 + ra * 90));
+  g.__sl.__update(t);
+  g.__blast.__update(t, -lerp(0, 620, clamp((t - 38.9) / 0.6, 0, 1)) * clamp((41 - t) / 1.4, 0, 1));
+  /* camera shake */
+  const amp = t > 38.9 ? 3.4 : (t > 38.2 ? 1.6 : 0.6);
+  const sh = shakeT(t * 1.9, amp, 12);
+  g.__mount.setAttribute('transform', 'translate(' + fmt(sh[0]) + ' ' + fmt(sh[1]) + ')');
+}
+
+/* ============================================================
+   SHOT 7 — launch into the golden sky
+============================================================ */
+function buildShot7() {
+  const g = gp(null, {});
+  SHOTS.push({ t0: 42.6, t1: 54.5, node: g, update: updateShot7 });
+
+  /* huge golden sky */
+  sky(g, DEFS, [[0, '#7fa8b8'], [0.22, '#b9cbb2'], [0.45, '#e9d8a2'], [0.68, '#f9e8b4'], [0.88, '#fff0c8'], [1, '#fff6da']]);
+  sunGlow(g, DEFS, 1210, 780, 760, '#fffbe8', '#ffe8a8', 0.6);
+  sunGlow(g, DEFS, 1210, 780, 300, '#ffffff', '#fff6d6', 0.85);
+  /* painted horizontal cloud streaks */
+  const cl = gp(g, {});
+  for (let i = 0; i < 9; i++) {
+    const cy = 160 + i * 85 + rr(-30, 30);
+    const cw = rr(300, 900);
+    path(cl, blobD(rr(200, 1500), cy, cw / 2, rr(7, 16), { irr: 0.4, n: 8 }),
+      { fill: _R() < 0.5 ? '#fdf2cf' : '#f4d99b', opacity: rr(0.3, 0.7) });
+  }
+  for (let i = 0; i < 6; i++) {
+    const cy = 200 + i * 120 + rr(-40, 40);
+    path(cl, 'M ' + fmt(rr(0, 500)) + ' ' + fmt(cy) + ' h ' + fmt(rr(200, 700)), { stroke: '#fff4d2', 'stroke-width': rr(2, 4), opacity: rr(0.25, 0.5), 'stroke-linecap': 'round' });
+  }
+  /* rays down through the gap */
+  const rg = rays(g, { cx: 1210, cy: 300, ang: 1.85, n: 6, len: 700, w: 70, spread: 160 });
+  shimmerRays.push(rg);
+  const rg2 = rays(g, { cx: 1100, cy: 250, ang: 1.95, n: 4, len: 520, w: 36, spread: 90 });
+  shimmerRays.push(rg2);
+
+  /* forest silhouette band at bottom with bright gap */
+  const fb = gp(g, {});
+  path(fb, 'M -40 1010 Q 300 940 620 985 T 1150 990 T 1700 975 T 2040 1000 L 2040 1120 L -40 1120 Z', { fill: '#3d5a44' });
+  path(fb, 'M -40 1040 Q 400 1000 800 1030 T 2040 1035 L 2040 1120 L -40 1120 Z', { fill: '#324a39' });
+  /* tree blobs on the band */
+  for (let i = 0; i < 14; i++) {
+    const bx = rr(-20, 1960);
+    if (bx > 1020 && bx < 1340) continue; /* gap */
+    path(fb, blobD(bx, 980 + rr(-30, 20), rr(40, 90), rr(30, 60), { irr: 0.45, n: 8 }), { fill: '#44634c', opacity: rr(0.8, 1) });
+  }
+  path(fb, blobD(1180, 992, 90, 40, { irr: 0.4, n: 8 }), { fill: '#57755b', opacity: 0.9 });
+  /* rim of light on the canopy gap */
+  el('ellipse', { cx: 1190, cy: 985, rx: 260, ry: 26, fill: '#ffe9ae', opacity: 0.5, filter: 'url(#b10)', style: 'mix-blend-mode:screen' }, fb);
+
+  /* spiral leaves in the light */
+  const spiral = gp(g, {});
+  g.__spiral = [];
+  for (let i = 0; i < 14; i++) {
+    const p = { cx: rr(1000, 1420), y0: rr(200, 700), span: rr(200, 420), sp: rr(60, 120), swA: rr(30, 90), swF: rr(1.2, 2.4), ph: rr(0, TAU), rotV: rr(-260, 260), s: rr(7, 13) };
+    const n = gp(spiral, {});
+    path(n, leafD(p.s), { fill: pick(['#93ac5e', '#b3a55e', '#c9bd76', '#7d9c54']) });
+    g.__spiral.push({ p, n });
+  }
+  /* trail */
+  const pts = [];
+  for (let i = 0; i <= 60; i++) {
+    const u = i / 60;
+    pts.push([0, 0, 0]);
+  }
+  g.__pts = pts;
+  const trail = makeTrail(g, pts, { w0: 16, w1: 62, fade: 3.0, mistFade: 8, step: 2 });
+  g.__trail = trail;
+
+  /* launch sprite */
+  const spr = gp(g, {});
+  g.__spr = spr;
+  buildLaunchSprite(spr);
+
+  /* returning birds at the end */
+  g.__ret = [];
+  for (let i = 0; i < 3; i++) {
+    const b = makeBird(0.7, { back: '#6f6752' });
+    g.appendChild(b);
+    g.__ret.push(b);
+  }
+  /* end fades */
+  g.__fadeW = el('rect', { x: -40, y: -40, width: 2000, height: 1160, fill: '#ffedc4', opacity: 0 }, g);
+  return g;
+}
+/* simplified side-profile launch sprite consistent with main design */
+function buildLaunchSprite(parent) {
+  const s = gp(parent, {});
+  /* flame (behind) */
+  const fl = gp(s, {});
+  const f1 = path(fl, 'M -30 -10 Q -90 0 -150 6 Q -90 16 -30 12 Z', { fill: 'rgba(255,190,110,0.55)', filter: 'url(#b4)' });
+  const f2 = path(fl, 'M -30 -8 Q -74 0 -118 4 Q -74 12 -30 9 Z', { fill: '#ffcf7e' });
+  const f3 = path(fl, 'M -28 -5 Q -60 0 -92 3 Q -60 8 -28 6 Z', { fill: '#fff6da' });
+  s.__flames = [f1, f2, f3];
+  /* body */
+  path(s, 'M -34 -6 Q -30 -26 -6 -30 L 30 -28 Q 52 -24 54 -6 Q 52 14 30 20 L -8 22 Q -30 16 -34 -6 Z', { fill: RB.base, stroke: RB.ink, 'stroke-width': 3, 'stroke-linejoin': 'round' });
+  path(s, 'M -30 -2 Q 0 -12 48 -4 L 50 6 Q 0 14 -30 8 Z', { fill: RB.shade });
+  /* head dome */
+  path(s, 'M 34 -30 Q 40 -52 62 -50 Q 80 -46 78 -26 Q 76 -12 60 -10 L 40 -12 Q 34 -20 34 -30 Z', { fill: RB.cream, stroke: RB.ink, 'stroke-width': 2.6 });
+  el('circle', { cx: 66, cy: -30, r: 6.5, fill: RB.glass, stroke: RB.ink, 'stroke-width': 1.6 }, s);
+  const eye = el('circle', { cx: 66, cy: -30, r: 6.5, fill: RB.eye }, s);
+  s.__eye = eye;
+  /* backpack stacks */
+  path(s, 'M -20 -30 L -6 -30 L -8 -52 L -20 -52 Z', { fill: RB.joint, stroke: RB.ink, 'stroke-width': 2.2 });
+  path(s, 'M -4 -30 L 8 -30 L 6 -56 L -6 -56 Z', { fill: RB.joint, stroke: RB.ink, 'stroke-width': 2.2 });
+  /* legs tucked */
+  path(s, 'M -6 18 L 8 20 L 12 34 L -4 32 Z', { fill: RB.jointD, stroke: RB.ink, 'stroke-width': 2.4 });
+  path(s, 'M 14 18 L 26 18 L 34 30 L 20 31 Z', { fill: RB.jointD, stroke: RB.ink, 'stroke-width': 2.4 });
+  /* arm */
+  path(s, 'M 8 -18 L 24 -12 L 20 2 L 4 -4 Z', { fill: RB.baseD, stroke: RB.ink, 'stroke-width': 2.4 });
+  /* moss patch */
+  path(s, blobD(10, -26, 9, 4, { irr: 0.5, n: 6 }), { fill: RB.moss1 });
+  path(s, blobD(-18, 14, 7, 3.4, { irr: 0.5, n: 6 }), { fill: RB.moss2 });
+  parent.__sprite = s;
+}
+function launchPos(u) {
+  /* cubic bezier P0(790,930) P1(860,540) P2(1150,260) P3(1700,-40) */
+  const p0 = [790, 930], p1 = [860, 540], p2 = [1150, 260], p3 = [1700, -40];
+  const e = u;
+  const x = (1 - e) ** 3 * p0[0] + 3 * (1 - e) ** 2 * e * p1[0] + 3 * (1 - e) * e * e * p2[0] + e ** 3 * p3[0];
+  const y = (1 - e) ** 3 * p0[1] + 3 * (1 - e) ** 2 * e * p1[1] + 3 * (1 - e) * e * e * p2[1] + e ** 3 * p3[1];
+  const dx = 3 * (1 - e) ** 2 * (p1[0] - p0[0]) + 6 * (1 - e) * e * (p2[0] - p1[0]) + 3 * e * e * (p3[0] - p2[0]);
+  const dy = 3 * (1 - e) ** 2 * (p1[1] - p0[1]) + 6 * (1 - e) * e * (p2[1] - p1[1]) + 3 * e * e * (p3[1] - p2[1]);
+  return [x, y, Math.atan2(dy, dx) * 180 / Math.PI];
+}
+function updateShot7(t) {
+  const g = SHOTS[6].node;
+  const T0 = 42.9, T1 = 46.1;
+  /* fill path points with arrival times */
+  const pts = g.__pts;
+  for (let i = 0; i <= 60; i++) {
+    const u = i / 60;
+    const [x, y] = launchPos(EZ.i3(u) * 0.0 + u); /* path sampled in u; easing applied on u below */
+    const ue = EZ.i2(u);
+    const [xe, ye] = launchPos(ue);
+    const tau = T0 + ue * (T1 - T0);
+    pts[i][0] = xe; pts[i][1] = ye; pts[i][2] = tau;
+  }
+  g.__trail.__update(t);
+  /* sprite along path */
+  const spr = g.__spr;
+  if (t < T0) {
+    spr.setAttribute('opacity', 1);
+    const p = launchPos(0);
+    spr.setAttribute('transform', 'translate(' + fmt(p[0]) + ' ' + fmt(p[1]) + ') scale(0.62)');
+    /* pre-launch crouch tremble */
+    const fr = Math.floor(t * 10);
+    spr.setAttribute('transform', 'translate(' + fmt(p[0] + (hash1(fr) - 0.5) * 3) + ' ' + fmt(p[1] + (hash2(fr) - 0.5) * 2 + 8) + ') scale(0.62)');
+  } else if (t < T1 + 0.4) {
+    spr.setAttribute('opacity', 1);
+    const u = clamp((t - T0) / (T1 - T0), 0, 1);
+    const ue = EZ.i2(u);
+    const [x, y, ang] = launchPos(ue);
+    const sc = lerp(0.62, 0.3, u);
+    const fr = Math.floor(t * 14);
+    /* flame flicker */
+    const fl = spr.__sprite.__flames;
+    const flen = [1, 1.25, 0.85, 1.15][fr % 4];
+    fl[0].setAttribute('transform', 'scale(' + fmt(flen) + ' 1)');
+    fl[1].setAttribute('transform', 'scale(' + fmt(flen * 0.9) + ' 1)');
+    fl[2].setAttribute('transform', 'scale(' + fmt(flen * 1.1) + ' 1)');
+    spr.setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y) + ') rotate(' + fmt(clamp(ang * 0.6, -10, 80)) + ') scale(' + fmt(sc) + ')');
+  } else spr.setAttribute('opacity', 0);
+  /* spiral leaves */
+  for (const it of g.__spiral) {
+    const p = it.p;
+    const tt = (t * p.sp / p.span * p.span + p.ph * 40);
+    const y = p.y0 + ((t * p.sp + p.ph * 100) % p.span);
+    const x = p.cx + Math.sin(y * 0.016 * p.swF + p.ph) * p.swA;
+    const rot = t * p.rotV * 0.3 + p.ph * 60;
+    const sc = 0.4 + 0.6 * Math.abs(Math.sin(t * p.swF + p.ph));
+    it.n.setAttribute('transform', 'translate(' + fmt(x) + ' ' + fmt(y) + ') rotate(' + fmt(rot) + ') scale(' + fmt(sc) + ' 1)');
+  }
+  /* returning birds */
+  birdFly(g.__ret[0], t, { t0: 47.6, t1: 53.4, from: [-40, 700], c1: [400, 620], c2: [800, 560], to: [1300, 480], scale: 0.7, flapFps: 7, glide: true, id: 21 });
+  birdFly(g.__ret[1], t, { t0: 48.4, t1: 53.6, from: [-60, 760], c1: [420, 700], c2: [900, 640], to: [1500, 560], scale: 0.58, flapFps: 6, glide: true, id: 22 });
+  birdFly(g.__ret[2], t, { t0: 49.2, t1: 54.2, from: [1960, 640], c1: [1500, 580], c2: [1100, 660], to: [600, 560], scale: 0.62, flapFps: 7, glide: true, id: 23 });
+  /* end fade to warm white, then main.js black handles the rest */
+  g.__fadeW.setAttribute('opacity', fmt(clamp((t - 50.6) / 2.2, 0, 1)));
+}
+
+/* ============================================================
+   robot mounting across shots 4/5/6
+============================================================ */
+let robMountState = null;
+function mountRobot(camParent, transform, tag) {
+  if (robMountState !== tag) {
+    camParent.appendChild(robMain.root);
+    robMountState = tag;
+  }
+  robMain.root.setAttribute('transform', transform);
+}
+
+/* ============================================================
+   SHOT 0 extras: global overlays (fade, grain, vignette)
+============================================================ */
+function buildOverlays() {
+  const g = gp(null, {});
+  /* warm grade */
+  el('rect', { x: 0, y: 0, width: 1920, height: 1080, fill: '#ffdfa0', opacity: 0.05, style: 'mix-blend-mode:screen' }, g);
+  /* vignette */
+  const id = radGrad(DEFS, [[0, '#141a18', 0], [0.72, '#141a18', 0], [1, '#101614', 0.42]], .5, .48, .72);
+  el('rect', { x: 0, y: 0, width: 1920, height: 1080, fill: 'url(#' + id + ')' }, g);
+  /* fade-from-black at start & fade-to-black at end (loop) */
+  const fb = el('rect', { x: -40, y: -40, width: 2000, height: 1160, fill: '#0b0d0c', opacity: 1, id: 'fadeBlack' }, g);
+  g.__fb = fb;
+  return g;
+}
+
+/* ============ audio.js : procedural dawn soundscape (optional, starts muted) ============ */
+'use strict';
+
+const SoundEngine = {
+  ctx: null, master: null, on: false,
+  layers: {},
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    this.ctx = ctx;
+    this.master = ctx.createGain();
+    this.master.gain.value = 0;
+    this.master.connect(ctx.destination);
+    /* noise buffer */
+    const len = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
+    this.noiseBuf = buf;
+    /* wind layer */
+    const wind = this.mkNoise(400, 'lowpass', 0.6);
+    wind.filter.frequency.value = 320; wind.filter.Q.value = 0.4;
+    this.layers.wind = wind;
+    /* rumble layer */
+    const rum = this.mkNoise(90, 'lowpass', 1.2);
+    this.layers.rumble = rum;
+    /* engine layer (higher roar) */
+    const eng = this.mkNoise(900, 'bandpass', 1.0);
+    eng.filter.Q.value = 0.7;
+    this.layers.engine = eng;
+  },
+  mkNoise(freq, type, gain) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf; src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = type; filter.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(filter); filter.connect(g); g.connect(this.master);
+    src.start();
+    return { src, filter, gain: g };
+  },
+  setOn(v) {
+    this.init();
+    if (!this.ctx) return false;
+    this.on = v;
+    if (v && this.ctx.state === 'suspended') this.ctx.resume();
+    this.master.gain.linearRampToValueAtTime(v ? 0.9 : 0, this.ctx.currentTime + 0.4);
+    return true;
+  },
+  /* called every frame with master timeline t and previous t */
+  update(t, prevT) {
+    if (!this.ctx || !this.on) return;
+    const L = this.layers;
+    const set = (layer, g, f) => {
+      layer.gain.gain.setTargetAtTime(g, this.ctx.currentTime, 0.12);
+      if (f) layer.filter.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.15);
+    };
+    /* wind bed */
+    let wind = 0.045 + Math.sin(t * 0.4) * 0.012;
+    if (t > 37.0) wind += clamp((t - 37.0) / 1.4, 0, 1) * 0.16;
+    if (t > 41.4) wind += clamp((41.9 - t) / 2.5, 0, 1) * 0.1;
+    if (t > 42.8 && t < 47) wind += 0.06;
+    set(L.wind, wind, 300 + wind * 900);
+    /* rumble: tremble + rise */
+    let rum = 0;
+    if (t > 23.8 && t < 28) rum = 0.05 + clamp((t - 24) / 3, 0, 1) * 0.07;
+    if (t > 30.9 && t < 37.6) rum = Math.max(rum, 0.06 + clamp((t - 31) / 5, 0, 1) * 0.06);
+    if (t > 38.0 && t < 41.5) rum = Math.max(rum, 0.16);
+    set(L.rumble, rum, 85);
+    /* engine roar */
+    let eng = 0;
+    if (t > 38.6 && t < 42.4) eng = clamp((t - 38.6) / 0.5, 0, 1) * 0.2 * clamp((42.4 - t) / 1.2, 0, 1);
+    if (t > 42.9 && t < 46.4) eng = 0.22 * clamp((t - 42.9) / 0.3, 0, 1) * clamp((46.4 - t) / 1.6, 0, 1);
+    set(L.engine, eng, 750 + eng * 2200);
+    /* one-shot events */
+    const EV = [
+      [2.2, () => this.chirp(2400, 0.10)], [5.0, () => this.chirp(2100, 0.09)],
+      [11.4, () => this.chirp(2600, 0.12)], [13.2, () => this.chirp(2300, 0.10)],
+      [14.5, () => { this.chirp(2600, 0.12); setTimeout(() => this.chirp(2900, 0.10), 160); }],
+      [17.4, () => this.chirp(1900, 0.06)],
+      [25.3, () => { for (let i = 0; i < 5; i++) setTimeout(() => this.chirp(2200 + Math.random() * 900, 0.07), i * 90); }],
+      [29.35, () => this.creak(140)], [31.1, () => this.creak(120)], [33.4, () => this.creak(105)], [35.2, () => this.creak(95)],
+      [38.9, () => this.boom()],
+      [42.95, () => this.whoosh()]
+    ];
+    for (const [et, fn] of EV) if (prevT < et && t >= et) fn();
+  },
+  chirp(f0, g) {
+    const ctx = this.ctx; if (!ctx || !this.on) return;
+    const o = ctx.createOscillator(), gn = ctx.createGain();
+    o.type = 'sine';
+    const t0 = ctx.currentTime;
+    o.frequency.setValueAtTime(f0, t0);
+    o.frequency.exponentialRampToValueAtTime(f0 * 1.5, t0 + 0.06);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.8, t0 + 0.14);
+    gn.gain.setValueAtTime(0, t0);
+    gn.gain.linearRampToValueAtTime(g, t0 + 0.02);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o.connect(gn); gn.connect(this.master);
+    o.start(t0); o.stop(t0 + 0.2);
+  },
+  creak(f) {
+    const ctx = this.ctx; if (!ctx || !this.on) return;
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator(), gn = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f, t0);
+    o.frequency.linearRampToValueAtTime(f * 0.6, t0 + 0.7);
+    const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = 500;
+    gn.gain.setValueAtTime(0, t0);
+    gn.gain.linearRampToValueAtTime(0.05, t0 + 0.15);
+    gn.gain.linearRampToValueAtTime(0.0001, t0 + 0.85);
+    o.connect(fl); fl.connect(gn); gn.connect(this.master);
+    o.start(t0); o.stop(t0 + 0.9);
+  },
+  boom() {
+    const ctx = this.ctx; if (!ctx || !this.on) return;
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator(), gn = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(65, t0);
+    o.frequency.exponentialRampToValueAtTime(34, t0 + 0.9);
+    gn.gain.setValueAtTime(0.4, t0);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
+    o.connect(gn); gn.connect(this.master);
+    o.start(t0); o.stop(t0 + 1.2);
+    const n = this.mkNoise(1200, 'highpass', 0);
+    n.gain.gain.setValueAtTime(0.25, t0);
+    n.gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+    setTimeout(() => { try { n.src.stop(); } catch (e) { } }, 700);
+  },
+  whoosh() {
+    const ctx = this.ctx; if (!ctx || !this.on) return;
+    const t0 = ctx.currentTime;
+    const n = this.mkNoise(300, 'bandpass', 0);
+    n.filter.Q.value = 1.2;
+    n.filter.frequency.setValueAtTime(220, t0);
+    n.filter.frequency.exponentialRampToValueAtTime(2600, t0 + 2.6);
+    n.gain.gain.setValueAtTime(0.001, t0);
+    n.gain.gain.linearRampToValueAtTime(0.3, t0 + 0.9);
+    n.gain.gain.linearRampToValueAtTime(0.0001, t0 + 3.2);
+    setTimeout(() => { try { n.src.stop(); } catch (e) { } }, 3400);
+  }
+};
+
+/* ============ main.js : bootstrap, timeline loop, UI ============ */
+'use strict';
+
+const W = 1920, H = 1080, END = 54.5;
+let svg, stageEl, grainEl;
+let shotGroups = [], overlayG;
+let started = false, paused = false;
+let masterT = 0, prevMasterT = 0;
+let lastFrameTs = 0;
+let grainTiles = [], grainIdx = 0, grainLastSwitch = 0;
+
+function boot() {
+  if (!document.getElementById('stage')) return; /* debug/probe pages without a stage */
+  stageEl = document.getElementById('stage');
+  svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' });
+  svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%');
+  stageEl.appendChild(svg);
+  DEFS = el('defs', {}, svg);
+  /* blur filters */
+  for (const [id, dev] of [['b2', 2], ['b4', 4], ['b8', 8], ['b10', 11], ['b14', 15]]) {
+    const f = el('filter', { id, x: '-30%', y: '-30%', width: '160%', height: '160%' }, DEFS);
+    el('feGaussianBlur', { stdDeviation: dev }, f);
+  }
+  /* the hero robot — shared across shots 4/5/6 for model consistency */
+  robMain = makeRobot('rm', { detail: true });
+
+  /* build shots in timeline order (deterministic RNG order) */
+  const g1 = buildShot1();
+  const g2 = buildShot2();
+  const g3 = buildShot3();
+  const g4 = buildShot4();
+  const g5 = buildShot5();
+  const g6 = buildShot6();
+  const g7 = buildShot7();
+  shotGroups = [g1, g2, g3, g4, g5, g6, g7];
+  shotGroups.forEach((g, i) => { svg.appendChild(g); g.setAttribute('display', i === 0 ? '' : 'none'); });
+  overlayG = buildOverlays();
+  paintTexture(svg, DEFS);
+  svg.appendChild(overlayG);
+
+  /* grain div */
+  grainEl = document.getElementById('grain');
+  grainTiles = [grainDataURL(11), grainDataURL(29), grainDataURL(47)];
+  grainEl.style.backgroundImage = 'url(' + grainTiles[0] + ')';
+
+  fit();
+  window.addEventListener('resize', fit);
+  /* controls */
+  stageEl.addEventListener('click', (e) => {
+    if (e.target.closest('.ctl')) return;
+    paused = !paused;
+    document.getElementById('pp').textContent = paused ? '\u25B6' : '\u2759\u2759';
+  });
+  document.getElementById('rp').addEventListener('click', () => { masterT = 0; prevMasterT = 0; paused = false; document.getElementById('pp').textContent = '\u2759\u2759'; });
+  document.getElementById('snd').addEventListener('click', (e) => {
+    const ok = SoundEngine.setOn(!SoundEngine.on);
+    e.currentTarget.style.opacity = ok && SoundEngine.on ? 1 : 0.55;
+  });
+  document.getElementById('pp').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pp').textContent = paused ? '\u25B6' : '\u2759\u2759';
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); paused = !paused; document.getElementById('pp').textContent = paused ? '\u25B6' : '\u2759\u2759'; }
+  });
+  /* cursor auto-hide */
+  let hideTO = null;
+  stageEl.addEventListener('mousemove', () => {
+    stageEl.style.cursor = '';
+    document.getElementById('ui').style.opacity = 1;
+    clearTimeout(hideTO);
+    hideTO = setTimeout(() => { stageEl.style.cursor = 'none'; document.getElementById('ui').style.opacity = 0; }, 2200);
+  });
+
+  window.__seek = function (t) {
+    paused = true;
+    masterT = t; prevMasterT = t;
+    renderFrame(t);
+  };
+  window.__frame = function (t) { renderFrame(t); };
+  window.__ready = true;
+  requestAnimationFrame(loop);
+}
+
+function fit() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const s = Math.min(vw / W, vh / H);
+  stageEl.style.width = fmt(W * s) + 'px';
+  stageEl.style.height = fmt(H * s) + 'px';
+}
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!lastFrameTs) lastFrameTs = ts;
+  const dt = Math.min(0.1, (ts - lastFrameTs) / 1000);
+  lastFrameTs = ts;
+  if (!paused && !window.__holdFrame) {
+    prevMasterT = masterT;
+    masterT = (masterT + dt) % END;
+  }
+  renderFrame(masterT);
+  if (SoundEngine.ctx && SoundEngine.on) SoundEngine.update(masterT, prevMasterT);
+}
+
+function renderFrame(t) {
+  /* shot visibility */
+  for (let i = 0; i < SHOTS.length; i++) {
+    const s = SHOTS[i];
+    const on = t >= s.t0 && t < s.t1;
+    const vis = s.node.getAttribute('display') !== 'none';
+    if (on !== vis) s.node.setAttribute('display', on ? '' : 'none');
+    if (on) s.update(t);
+  }
+  /* wind model */
+  wind.base = 4 + Math.sin(t * 0.5) * 2;
+  const gUp = clamp((t - 37.4) / 1.2, 0, 1) * clamp((42.2 - t) / 1.6, 0, 1);
+  wind.gust = gUp * 1.0;
+  /* sways */
+  for (const s of sways) {
+    const amp = s.amp * (1 + wind.gust * (s.gale ? 9 : 0.8));
+    let b = Math.sin(t * s.freq * TAU + s.ph) * amp + wind.gust * (s.gale ? 62 : 6);
+    const fr = Math.floor(t * 8);
+    b += (hash1(fr * 3.7 + s.ph) - 0.5) * 1.2;
+    b = clamp(b, -60, 60);
+    if (s.node.__subs) {
+      s.node.__subs.forEach((sg, i) => {
+        sg.setAttribute('transform', 'translate(0 ' + fmt(s.y || 0) + ') skewX(' + fmt(-b * (1 + i * 0.22)) + ') translate(0 ' + fmt(-(s.y || 0)) + ')');
+      });
+    } else if (s.cx != null) {
+      s.node.setAttribute('transform', 'rotate(' + fmt(b) + ' ' + fmt(s.cx) + ' ' + fmt(s.cy) + ')');
+    }
+  }
+  /* mist drift (slow oscillation, no wrap jumps) */
+  mistsDrift.forEach((m, i) => {
+    m.node.setAttribute('transform', 'translate(' + fmt(Math.sin(t * 0.05 + i * 2.1) * 70) + ' 0)');
+  });
+  /* ray shimmer, stepped at 5fps */
+  const rfr = Math.floor(t * 5);
+  shimmerRays.forEach((rg, i) => {
+    const v = 0.8 + 0.2 * hash1(rfr * 1.7 + i * 9.3);
+    rg.setAttribute('opacity', fmt(v));
+  });
+  /* grain cycle at 8fps */
+  if (t - grainLastSwitch > 0.125) { grainLastSwitch = t; grainIdx = (grainIdx + 1) % 3; grainEl.style.backgroundImage = 'url(' + grainTiles[grainIdx] + ')'; }
+  /* global fades */
+  const startF = 1 - clamp((t - 0.15) / 1.9, 0, 1);
+  const endF = clamp((t - 52.4) / 1.7, 0, 1);
+  overlayG.__fb.setAttribute('opacity', fmt(Math.max(startF, endF)));
+}
+
+/* boot after DOM ready */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,2614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Moss Giant — 苔の巨人 | A 2D Anime Short</title>
+<meta name="description" content="At dawn, the abandoned forest remembers how to dream. An original hand-drawn-style 2D anime short about an ancient giant machine." />
+<meta name="theme-color" content="#0a0d09" />
+<meta property="og:title" content="The Moss Giant — 苔の巨人" />
+<meta property="og:description" content="An original 2D anime short. At dawn, the abandoned forest remembers how to dream." />
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Shippori+Mincho:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#f3e8cd;
+    --cream-dim:#d8cfb6;
+    --gold:#eec488;
+    --gold-deep:#c99552;
+    --moss:#7d8f5a;
+    --ink:#1d251c;
+    --panel:rgba(9,13,9,.62);
+    --serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+    --jp:"Shippori Mincho","Yu Mincho",serif;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:#070a07;color:var(--cream);font-family:var(--serif);
+    overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    animation:pageIn 1.1s ease both;
+  }
+  @keyframes pageIn{from{opacity:0}to{opacity:1}}
+  button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  button:focus-visible{outline:1px solid var(--gold);outline-offset:4px}
+  ::selection{background:rgba(238,196,136,.25)}
+
+  #stage{position:fixed;inset:0;overflow:hidden;background:#0a0d09;isolation:isolate}
+  #frame{position:absolute;inset:0;will-change:transform}
+  .scene{position:absolute;inset:0;width:100%;height:100%;display:block;transition:opacity 1.15s ease}
+  #scene-launch{opacity:0;pointer-events:none}
+  body[data-phase="launch"] #scene-launch{opacity:1}
+  body[data-phase="launch"] #scene-main{opacity:0;visibility:hidden;transition:opacity 1.1s ease,visibility 0s 1.1s}
+
+  /* ---------- film texture & frame ---------- */
+  .grain{
+    position:absolute;inset:-60%;z-index:18;pointer-events:none;opacity:.34;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)' opacity='.52'/%3E%3C/svg%3E");
+    background-size:260px 260px;
+    animation:grainShift 1.4s steps(4) infinite;
+  }
+  @keyframes grainShift{
+    0%{transform:translate3d(0,0,0)}25%{transform:translate3d(-2%,1.4%,0)}
+    50%{transform:translate3d(1.6%,-1.2%,0)}75%{transform:translate3d(-1%,-.6%,0)}100%{transform:translate3d(0,0,0)}
+  }
+  .vignette{
+    position:absolute;inset:0;z-index:16;pointer-events:none;
+    background:
+      radial-gradient(ellipse at 56% 48%, rgba(10,14,9,0) 38%, rgba(10,14,9,.20) 72%, rgba(7,10,7,.58) 100%),
+      linear-gradient(to bottom, rgba(7,10,7,.42), rgba(7,10,7,0) 18%, rgba(7,10,7,0) 78%, rgba(7,10,7,.40));
+  }
+  .film-edge{position:absolute;left:0;right:0;height:clamp(30px,5vh,58px);background:#060806;z-index:19;pointer-events:none;transition:height 1s cubic-bezier(.5,0,.2,1)}
+  .film-edge.top{top:0}
+  .film-edge.bottom{bottom:0}
+  body.started .film-edge,body.ended .film-edge{height:clamp(14px,2.4vh,30px)}
+  .flash{position:absolute;inset:0;z-index:24;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 60% 40%,#fff7de,#ffd999 60%,#ffe7b8)}
+  .flash.on{animation:flashWarm 1.5s ease-out both}
+  @keyframes flashWarm{0%{opacity:0}10%{opacity:.92}100%{opacity:0}}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:absolute;top:0;left:0;right:0;z-index:26;display:flex;align-items:center;justify-content:space-between;
+    padding:clamp(14px,2.4vh,26px) clamp(16px,3.2vw,46px);pointer-events:none;
+  }
+  .brand{display:flex;align-items:center;gap:12px;pointer-events:auto}
+  .brand svg{width:24px;height:24px;opacity:.9}
+  .brand .word{font-size:11px;letter-spacing:.42em;font-weight:500;color:#f0e4c7;line-height:1}
+  .brand .studio{font-size:7.5px;letter-spacing:.56em;color:rgba(243,232,205,.55);margin-top:5px}
+  .top-meta{display:flex;align-items:center;gap:18px;pointer-events:auto}
+  .top-meta .kicker{font-size:9.5px;letter-spacing:.32em;color:rgba(243,232,205,.62);text-transform:uppercase}
+  .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:99px;border:1px solid rgba(243,232,205,.22);transition:.35s;pointer-events:auto}
+  .icon-btn:hover{border-color:rgba(238,196,136,.7);background:rgba(238,196,136,.09)}
+  .icon-btn svg{width:14px;height:14px}
+  .icon-btn .slash{transition:.3s}
+  body.muted .icon-btn .slash{opacity:1}
+  .icon-btn .slash{opacity:0}
+
+  /* ---------- chapter caption ---------- */
+  .chapter{
+    position:absolute;left:clamp(18px,4vw,58px);bottom:clamp(96px,15vh,150px);z-index:23;
+    display:flex;gap:16px;align-items:flex-start;pointer-events:none;
+    opacity:0;transform:translateY(12px);transition:opacity .9s ease,transform 1.2s cubic-bezier(.2,.7,.2,1);
+    text-shadow:0 2px 20px rgba(9,13,9,.65);
+  }
+  .chapter.visible{opacity:1;transform:none}
+  .chapter .rule{width:1px;height:56px;background:linear-gradient(to bottom,rgba(238,196,136,.95),rgba(238,196,136,0));margin-top:4px}
+  .chapter .num{font-size:9.5px;letter-spacing:.36em;color:var(--gold);margin-bottom:6px}
+  .chapter .t{font-size:clamp(17px,1.8vw,24px);font-style:italic;letter-spacing:.045em;line-height:1.1;color:#f6ecd6}
+  .chapter .jp{font-family:var(--jp);font-size:10px;letter-spacing:.28em;color:rgba(243,232,205,.62);margin-top:8px}
+
+  /* ---------- start / end cards ---------- */
+  .overlay{position:absolute;inset:0;z-index:34;display:grid;place-items:center;text-align:center}
+  #startScreen{background:
+      radial-gradient(ellipse at 50% 54%, rgba(9,14,9,.08) 0%, rgba(8,12,8,.55) 58%, rgba(5,8,5,.9) 100%),
+      linear-gradient(to top, rgba(5,8,5,.6), rgba(5,8,5,0) 45%);
+    transition:opacity 1.3s ease,visibility 1.3s}
+  #startScreen.gone{opacity:0;visibility:hidden}
+  .start-inner{max-width:920px;padding:clamp(20px,4vw,50px);position:relative}
+  .eyebrow{font-size:10px;letter-spacing:.58em;text-transform:uppercase;color:var(--gold);margin-bottom:clamp(14px,3vh,28px)}
+  .title-main{
+    font-family:var(--serif);font-weight:400;font-size:clamp(52px,9.4vw,128px);line-height:.86;letter-spacing:.015em;
+    margin:0;color:#f7efdb;text-shadow:0 10px 60px rgba(0,0,0,.6);
+  }
+  .title-main em{font-style:italic;color:#f1e2c4}
+  .title-jp{font-family:var(--jp);font-size:clamp(11px,1.3vw,14px);letter-spacing:.7em;color:rgba(243,232,205,.72);margin:clamp(16px,2.6vh,24px) 0 0}
+  .hairline{width:46px;height:1px;background:rgba(238,196,136,.6);margin:clamp(16px,3vh,26px) auto}
+  .tagline{font-size:clamp(14px,1.5vw,18px);font-style:italic;color:rgba(243,232,205,.8);max-width:540px;margin:0 auto;line-height:1.6}
+  .play-btn{
+    margin-top:clamp(22px,4.2vh,42px);display:inline-flex;align-items:center;gap:16px;
+    border:1px solid rgba(238,196,136,.44);border-radius:2px;padding:15px 30px 15px 22px;
+    background:rgba(18,24,17,.28);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    letter-spacing:.28em;font-size:10px;text-transform:uppercase;color:#f7efdb;transition:.5s cubic-bezier(.2,.7,.2,1);
+  }
+  .play-btn:hover{background:rgba(238,196,136,.14);border-color:rgba(238,196,136,.85);letter-spacing:.32em}
+  .play-btn .tri{width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-left:9px solid var(--gold)}
+  .start-note{margin-top:18px;font-size:9.5px;letter-spacing:.3em;color:rgba(243,232,205,.42);text-transform:uppercase}
+  .start-meta{display:flex;justify-content:center;gap:22px;margin-top:clamp(18px,3vh,26px);font-size:9px;letter-spacing:.26em;color:rgba(243,232,205,.42);text-transform:uppercase}
+  .start-meta span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:3px;height:3px;border-radius:99px;background:rgba(238,196,136,.6)}
+  #startScreen .reveal{opacity:0;transform:translateY(14px);animation:startReveal 1.7s cubic-bezier(.2,.7,.2,1) forwards}
+  #startScreen .reveal:nth-child(1){animation-delay:.15s}
+  #startScreen .reveal:nth-child(2){animation-delay:.32s}
+  #startScreen .reveal:nth-child(3){animation-delay:.48s}
+  #startScreen .reveal:nth-child(4){animation-delay:.6s}
+  #startScreen .reveal:nth-child(5){animation-delay:.72s}
+  #startScreen .reveal:nth-child(6){animation-delay:.9s}
+  #startScreen .reveal:nth-child(7){animation-delay:1.05s}
+  #startScreen .reveal:nth-child(8){animation-delay:1.2s}
+  @keyframes startReveal{to{opacity:1;transform:none}}
+  #startScreen.gone .start-inner{animation:startDismiss 1s ease forwards}
+  @keyframes startDismiss{to{opacity:0;transform:translateY(-10px)}}
+  .start-inner .tagline{text-shadow:0 2px 22px rgba(0,0,0,.65)}
+  .title-main{text-wrap:balance}
+
+  #endCard{
+    opacity:0;visibility:hidden;transition:opacity 1.8s ease,visibility 1.8s;z-index:35;
+    background:
+      radial-gradient(ellipse at 50% 50%, rgba(12,16,10,.34), rgba(9,13,9,.66) 62%, rgba(6,9,6,.93)),
+      linear-gradient(to top, rgba(5,8,5,.55), rgba(5,8,5,0) 42%);
+  }
+  body.ended #endCard{opacity:1;visibility:visible}
+  .end-inner{max-width:800px;padding:30px}
+  .end-inner .title-main{font-size:clamp(44px,7vw,92px)}
+  .end-quote{font-style:italic;font-size:clamp(14px,1.6vw,19px);color:rgba(243,232,205,.78);margin:20px auto 0;max-width:470px;line-height:1.65}
+  .btn-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+  .ghost-btn{border:1px solid rgba(243,232,205,.22);padding:12px 22px;font-size:9px;letter-spacing:.28em;text-transform:uppercase;transition:.4s;border-radius:2px;backdrop-filter:blur(6px)}
+  .ghost-btn:hover{border-color:rgba(238,196,136,.7);background:rgba(238,196,136,.08)}
+  .credits{margin-top:clamp(24px,5vh,46px);font-size:8.5px;letter-spacing:.28em;line-height:2.1;color:rgba(243,232,205,.4);text-transform:uppercase}
+  .credits b{font-weight:500;color:rgba(243,232,205,.62)}
+  #endCard .reveal{opacity:0;transform:translateY(14px)}
+  body.ended #endCard .reveal{animation:revealUp 1.6s cubic-bezier(.2,.7,.2,1) forwards}
+  body.ended #endCard .reveal:nth-child(1){animation-delay:.15s}
+  body.ended #endCard .reveal:nth-child(2){animation-delay:.35s}
+  body.ended #endCard .reveal:nth-child(3){animation-delay:.55s}
+  body.ended #endCard .reveal:nth-child(4){animation-delay:.8s}
+  body.ended #endCard .reveal:nth-child(5){animation-delay:1.05s}
+  @keyframes revealUp{to{opacity:1;transform:none}}
+
+  /* ---------- controls ---------- */
+  #controls{
+    position:absolute;left:0;right:0;bottom:0;z-index:31;
+    display:flex;align-items:center;gap:clamp(10px,1.6vw,20px);
+    padding:14px clamp(14px,3.2vw,44px) clamp(26px,4.4vh,44px);
+    background:linear-gradient(to top,rgba(6,9,6,.9),rgba(6,9,6,.42) 55%,rgba(6,9,6,0));
+    opacity:0;transform:translateY(16px);pointer-events:none;
+    transition:opacity .9s ease,transform 1s cubic-bezier(.2,.7,.2,1);
+  }
+  body.started #controls,body.ended #controls{opacity:1;transform:none;pointer-events:auto}
+  body.ended #controls{opacity:0;pointer-events:none}
+  .ctl{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:34px;height:34px;border-radius:99px;border:1px solid rgba(243,232,205,.22);transition:.32s;position:relative}
+  .ctl:hover{border-color:rgba(238,196,136,.75);background:rgba(238,196,136,.09)}
+  .ctl svg{width:12px;height:12px;fill:#f3e8cd}
+  .ctl .pause-bars{display:none}
+  body.playing .ctl .pause-bars{display:block}
+  body.playing .ctl .play-tri{display:none}
+  .timeline{flex:1;position:relative;height:26px;display:flex;align-items:center;cursor:pointer;min-width:60px}
+  .tl-track{position:absolute;left:0;right:0;height:2px;background:rgba(243,232,205,.2)}
+  .tl-fill{position:absolute;left:0;height:2px;width:0;background:linear-gradient(to right,rgba(238,196,136,.55),var(--gold));box-shadow:0 0 10px rgba(238,196,136,.35)}
+  .tl-head{position:absolute;top:50%;left:0;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:99px;background:var(--gold);box-shadow:0 0 0 3px rgba(238,196,136,.13)}
+  .tl-mark{position:absolute;top:50%;width:1px;height:7px;margin-top:-3.5px;padding:0;background:rgba(243,232,205,.4);transition:.3s}
+  .tl-mark:hover{background:var(--gold);height:14px;margin-top:-7px}
+  .tl-mark span{position:absolute;bottom:16px;left:50%;transform:translateX(-50%) translateY(4px);white-space:nowrap;font-size:8px;letter-spacing:.22em;text-transform:uppercase;color:rgba(243,232,205,.8);background:rgba(8,12,8,.82);padding:4px 7px;opacity:0;pointer-events:none;transition:.25s;border:1px solid rgba(243,232,205,.1)}
+  .tl-mark:hover span{opacity:1;transform:translateX(-50%)}
+  .time{font-variant-numeric:tabular-nums;font-size:10.5px;letter-spacing:.14em;color:rgba(243,232,205,.68);min-width:66px;text-align:right}
+  .time b{color:#f3e8cd;font-weight:500}
+  #audioBtn .slash{opacity:0;transition:.3s}
+  body.muted #audioBtn .slash{opacity:1}
+
+  /* ---------- help hint ---------- */
+  .hint{position:absolute;right:clamp(16px,3vw,40px);bottom:clamp(76px,11vh,104px);z-index:22;font-size:8.5px;letter-spacing:.24em;color:rgba(243,232,205,.35);text-transform:uppercase;opacity:0;transition:1s;text-align:right}
+  body.started .hint{opacity:1}
+  @media(max-width:700px){.hint{display:none}}
+
+  /* ---------- svg painting helpers ---------- */
+  .scene svg text{font-family:var(--serif)}
+  .inkline{stroke:#26311f;stroke-linecap:round;stroke-linejoin:round;fill:none}
+  .warm-rim{stroke:#f6e2b4;stroke-linecap:round;fill:none}
+  #robot,#grounds,#ferns,#canopyOverlay,.artRough{filter:url(#inkRough)}
+  #scene-main .glowish{mix-blend-mode:screen}
+  .drift-slow{animation:driftSlow 34s ease-in-out infinite alternate}
+  .drift-slower{animation:driftSlow 52s ease-in-out infinite alternate-reverse}
+  @keyframes driftSlow{0%{transform:translate3d(-10px,0,0)}100%{transform:translate3d(16px,-4px,0)}}
+  .rayPulse{animation:rayPulse 11s ease-in-out infinite alternate}
+  @keyframes rayPulse{0%{opacity:.32}50%{opacity:.62}100%{opacity:.42}}
+  .mote{position:relative}
+
+  /* ---------- performance / reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce){
+    .grain{animation:none}
+    .drift-slow,.drift-slower,.rayPulse{animation:none!important}
+  }
+</style>
+</head>
+<body data-phase="dawn" data-pose="dawn">
+
+<div id="stage">
+  <div id="frame">
+    <!-- ======================= MAIN SCENE : the sleeping grove ======================= -->
+    <svg id="scene-main" class="scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="An ancient moss-covered giant robot kneels in a misty forest at dawn.">
+      <defs>
+        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#617781"/>
+          <stop offset=".2" stop-color="#85959a"/>
+          <stop offset=".42" stop-color="#bcc0b2"/>
+          <stop offset=".6" stop-color="#e5d7b8"/>
+          <stop offset=".75" stop-color="#f5d6a1"/>
+          <stop offset=".88" stop-color="#f0c189"/>
+          <stop offset="1" stop-color="#d9a875"/>
+        </linearGradient>
+        <radialGradient id="sunGlow" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#fff4d4" stop-opacity="1"/>
+          <stop offset=".22" stop-color="#ffe7b7" stop-opacity=".88"/>
+          <stop offset=".52" stop-color="#ffd697" stop-opacity=".38"/>
+          <stop offset="1" stop-color="#ffcf8e" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="shaftGrad" x1="0" y1="0" x2=".2" y2="1">
+          <stop offset="0" stop-color="#ffeec9" stop-opacity=".85"/>
+          <stop offset=".5" stop-color="#ffe2ab" stop-opacity=".28"/>
+          <stop offset="1" stop-color="#ffe6b8" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="mistGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#eef0df" stop-opacity="0"/>
+          <stop offset=".42" stop-color="#f2f1e1" stop-opacity=".66"/>
+          <stop offset="1" stop-color="#e8ecd9" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#82915c"/>
+          <stop offset=".3" stop-color="#66794b"/>
+          <stop offset=".72" stop-color="#4b5f3d"/>
+          <stop offset="1" stop-color="#364a34"/>
+        </linearGradient>
+        <linearGradient id="hillGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b4bda1" stop-opacity=".9"/>
+          <stop offset="1" stop-color="#89997d" stop-opacity=".3"/>
+        </linearGradient>
+        <radialGradient id="coreLight" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#fff9e2" stop-opacity="1"/>
+          <stop offset=".24" stop-color="#ffe9ac" stop-opacity=".96"/>
+          <stop offset=".55" stop-color="#f6bb63" stop-opacity=".55"/>
+          <stop offset="1" stop-color="#e7a34c" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="poolGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#e8d6ac" stop-opacity=".55"/>
+          <stop offset=".5" stop-color="#b0bba2" stop-opacity=".32"/>
+          <stop offset="1" stop-color="#5d7257" stop-opacity=".15"/>
+        </linearGradient>
+        <filter id="inkRough" x="-6%" y="-6%" width="112%" height="112%">
+          <feTurbulence type="fractalNoise" baseFrequency=".026" numOctaves="2" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="2.1" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <filter id="leafRough" x="-12%" y="-12%" width="124%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency=".012" numOctaves="2" seed="19" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="5.5" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <filter id="soft8" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8"/></filter>
+        <filter id="soft20" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="20"/></filter>
+        <filter id="soft2" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2"/></filter>
+        <filter id="warmBloom" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="16" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="coreBloom" x="-120%" y="-120%" width="340%" height="340%">
+          <feGaussianBlur stdDeviation="9" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <linearGradient id="barkGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#2a3525"/>
+          <stop offset=".34" stop-color="#4d5a3c"/>
+          <stop offset=".62" stop-color="#69744c"/>
+          <stop offset="1" stop-color="#2f3b29"/>
+        </linearGradient>
+        <linearGradient id="barkGrad2" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#36412c"/>
+          <stop offset=".5" stop-color="#5d6844"/>
+          <stop offset="1" stop-color="#2b3624"/>
+        </linearGradient>
+        <radialGradient id="vignMain" cx=".5" cy=".48" r=".72">
+          <stop offset=".55" stop-color="#0e150e" stop-opacity="0"/>
+          <stop offset="1" stop-color="#0b110b" stop-opacity=".42"/>
+        </radialGradient>
+      </defs>
+
+      <g id="world">
+        <!-- sky -->
+        <rect x="0" y="0" width="1600" height="900" fill="url(#skyGrad)"/>
+        <g id="sun">
+          <circle cx="1160" cy="322" r="430" fill="url(#sunGlow)" opacity=".9"/>
+          <circle cx="1160" cy="322" r="86" fill="#fff3d2" opacity=".5" filter="url(#soft20)"/>
+        </g>
+        <!-- distant clouds, daubed -->
+        <g id="clouds" filter="url(#soft8)" opacity=".7">
+          <path d="M-80 268 C 130 232, 300 292, 486 262 C 668 232, 818 286, 1010 254 C 1216 220, 1388 276, 1680 238 L1680 352 C 1460 330, 1268 372, 1042 344 C 836 318, 620 372, 398 344 C 232 324, 80 356, -80 330 Z" fill="#f3e7d0" opacity=".42"/>
+          <path d="M-60 380 C 190 344, 384 402, 610 368 C 850 332, 1060 392, 1300 358 C 1450 338, 1560 366, 1680 344 L1680 402 C 1460 420, 1300 386, 1090 410 C 860 436, 646 392, 430 416 C 254 436, 90 412, -60 426 Z" fill="#fbf0d9" opacity=".3"/>
+          <path d="M-40 460 C 260 430, 470 476, 720 452 C 980 426, 1220 470, 1660 440 L1660 472 C 1240 502, 980 462, 700 486 C 440 508, 200 480, -40 496 Z" fill="#fff6e2" opacity=".24"/>
+        </g>
+        <!-- dry-brush sky washes, laid in by hand -->
+        <g id="skyBrush" opacity=".55" filter="url(#soft2)">
+          <path d="M-40 120 C 220 96, 430 132, 690 108 C 950 84, 1160 122, 1420 96 L1420 104 C 1160 132, 950 96, 690 120 C 430 144, 220 110, -40 134 Z" fill="#f5ead6" opacity=".3"/>
+          <path d="M-20 196 C 240 174, 470 208, 760 184 C 1040 160, 1280 196, 1620 172 L1620 182 C 1280 208, 1040 172, 760 196 C 470 220, 240 188, -20 208 Z" fill="#fbf1de" opacity=".26"/>
+          <path d="M-40 372 C 260 344, 530 384, 840 358 C 1140 332, 1360 366, 1640 342 L1640 354 C 1360 380, 1140 346, 840 372 C 530 398, 260 360, -40 386 Z" fill="#fff4df" opacity=".3"/>
+          <path d="M-30 416 C 280 396, 520 426, 800 406 C 1080 386, 1320 416, 1620 396 L1620 406 C 1320 428, 1080 398, 800 418 C 520 438, 280 410, -30 428 Z" fill="#fcefcf" opacity=".2"/>
+          <g fill="#fbf0d6" opacity=".24">
+            <ellipse cx="330" cy="248" rx="150" ry="16" transform="rotate(-2 330 248)"/>
+            <ellipse cx="720" cy="300" rx="210" ry="13"/>
+            <ellipse cx="1230" cy="238" rx="180" ry="12" transform="rotate(-3 1230 238)"/>
+            <ellipse cx="980" cy="388" rx="240" ry="14"/>
+          </g>
+        </g>
+        <!-- far mountains -->
+        <g id="mountains">
+          <path d="M0 566 L94 508 L186 542 L282 472 L388 532 L470 496 L566 542 L676 478 L772 534 L880 492 L988 546 L1094 504 L1208 552 L1312 512 L1416 548 L1520 498 L1600 536 L1600 612 L0 612 Z" fill="#a6b3a3" opacity=".62"/>
+          <path d="M0 600 C 180 560, 330 598, 500 572 C 700 542, 860 588, 1040 566 C 1230 542, 1400 586, 1600 560 L1600 650 L0 650 Z" fill="#91a392" opacity=".56"/>
+          <path d="M0 622 C 220 604, 360 630, 560 612 C 800 590, 1000 626, 1240 604 C 1380 592, 1500 610, 1600 600 L1600 700 L0 700 Z" fill="#7f9481" opacity=".4"/>
+          <g filter="url(#soft2)" opacity=".55">
+            <path d="M0 610 Q 200 580 400 606 T 800 596 T 1200 606 T 1600 590 L1600 626 Q 1200 642 800 628 T 0 646 Z" fill="#d6ddc9"/>
+          </g>
+        </g>
+        <!-- far, hazy tree line (procedural) -->
+        <g id="farCanopy"></g>
+        <g id="farTrunks"></g>
+        <!-- middle forest -->
+        <g id="midCanopy"></g>
+        <g id="midTrunks">
+          <g>
+            <path d="M498 690 C 486 590, 512 500, 486 402 C 470 338, 494 262, 480 168 L 546 160 C 552 268, 528 344, 548 414 C 570 496, 548 590, 570 700 Z" fill="url(#barkGrad2)"/>
+            <path d="M506 690 C 498 592, 520 496, 498 406 C 486 342, 510 268, 496 176 L 518 172 C 536 272, 510 348, 530 416 C 548 492, 530 596, 548 694 Z" fill="#79815a" opacity=".44"/>
+            <path d="M520 420 C 570 402, 602 360, 652 348 M512 512 C 470 492, 438 458, 404 446" class="inkline" stroke="#2b3624" stroke-width="5" opacity=".8"/>
+            <path d="M528 438 C 574 414, 606 378, 648 366 M512 530 C 480 508, 446 480, 414 466" fill="none" stroke="#a9ad83" stroke-width="2" opacity=".5"/>
+            <path d="M496 640 C 506 610, 494 584, 508 556 M536 664 C 546 628, 532 602, 546 572" fill="none" stroke="#28331f" stroke-width="2" opacity=".55"/>
+          </g>
+          <g>
+            <path d="M1228 700 C 1244 606, 1210 520, 1246 430 C 1268 370, 1240 292, 1262 196 L 1328 200 C 1318 306, 1342 380, 1310 452 C 1280 528, 1310 614, 1296 704 Z" fill="url(#barkGrad2)"/>
+            <path d="M1244 700 C 1258 604, 1226 526, 1258 442 C 1280 382, 1254 306, 1274 212 L 1292 214 C 1280 312, 1304 384, 1274 456 C 1248 530, 1276 612, 1264 700 Z" fill="#818a5e" opacity=".36"/>
+            <path d="M1276 470 C 1322 456, 1352 420, 1402 414 M1270 566 C 1234 552, 1204 522, 1176 512" class="inkline" stroke="#2b3624" stroke-width="4.5" opacity=".8"/>
+            <path d="M1250 646 C 1262 614, 1248 588, 1264 560 M1290 664 C 1298 630, 1284 608, 1298 582" fill="none" stroke="#28331f" stroke-width="2" opacity=".5"/>
+          </g>
+        </g>
+        <!-- light shafts -->
+        <g id="lightShafts" class="glowish">
+          <g class="rayPulse">
+            <path d="M1090 60 L1210 60 L880 760 L660 800 Z" fill="url(#shaftGrad)" opacity=".34" filter="url(#soft8)"/>
+            <path d="M1180 90 L1250 90 L1040 720 L860 780 Z" fill="url(#shaftGrad)" opacity=".25" filter="url(#soft8)"/>
+            <path d="M920 40 L990 40 L700 640 L520 700 Z" fill="url(#shaftGrad)" opacity=".18" filter="url(#soft8)"/>
+          </g>
+          <g class="rayPulse" style="animation-delay:-4s">
+            <path d="M1300 30 L1340 30 L1150 520 L1010 570 Z" fill="url(#shaftGrad)" opacity=".34" filter="url(#soft8)"/>
+            <path d="M820 0 L870 0 L610 500 L450 560 Z" fill="url(#shaftGrad)" opacity=".14" filter="url(#soft8)"/>
+          </g>
+        </g>
+        <!-- ground, rear -->
+        <g id="groundBack">
+          <path d="M0 660 C 140 642, 240 672, 360 658 C 500 642, 590 676, 720 666 C 880 654, 970 690, 1120 676 C 1280 662, 1400 690, 1600 664 L1600 900 L0 900 Z" fill="url(#groundGrad)"/>
+          <path d="M0 706 C 170 682, 330 716, 520 700 C 720 684, 880 720, 1080 704 C 1280 688, 1440 716, 1600 700 L1600 900 L0 900 Z" fill="#586b44"/>
+          <path d="M0 748 C 180 722, 360 760, 560 744 C 780 726, 990 762, 1220 744 C 1390 730, 1500 754, 1600 742 L1600 900 L0 900 Z" fill="#485c3c"/>
+          <path d="M0 780 C 220 758, 420 792, 640 778 C 880 762, 1100 798, 1340 780 C 1450 772, 1530 786, 1600 778 L1600 900 L0 900 Z" fill="#3b5034"/>
+          <path d="M0 660 C 140 642, 240 672, 360 658 C 500 642, 590 676, 720 666 C 880 654, 970 690, 1120 676 C 1280 662, 1400 690, 1600 664" fill="none" stroke="#8c9a6a" stroke-width="2.5" opacity=".5"/>
+          <!-- distant undergrowth -->
+          <g opacity=".8" fill="#4d6141">
+            <path d="M40 690 C 100 660, 170 668, 236 646 C 300 626, 356 660, 420 648 C 470 640, 500 662, 520 700 L 40 700 Z"/>
+            <path d="M1080 686 C 1140 656, 1216 666, 1284 646 C 1360 624, 1440 652, 1520 642 L1600 660 L1600 704 L1060 704 Z"/>
+          </g>
+          <!-- old fallen log -->
+          <g filter="url(#inkRough)">
+            <path d="M64 762 C 150 738, 262 748, 330 736 C 366 730, 392 744, 386 760 C 380 776, 340 780, 292 782 C 210 786, 120 800, 70 790 Z" fill="#4b5236"/>
+            <path d="M78 758 C 160 740, 258 750, 328 740 C 350 736, 372 744, 370 754 C 366 764, 330 772, 282 774 C 200 778, 122 792, 76 782 Z" fill="#6c7348"/>
+            <path d="M96 760 C 170 746, 250 756, 312 746" fill="none" stroke="#8d9360" stroke-width="3" opacity=".6"/>
+            <path d="M120 782 C 190 774, 260 780, 330 768 M150 770 C 220 762, 280 770, 340 760" fill="none" class="inkline" stroke="#333b27" stroke-width="2" opacity=".6"/>
+            <path d="M84 754 C 128 746, 156 750, 190 744 M240 744 C 280 740, 320 744, 348 738" fill="none" stroke="#93a05e" stroke-width="7" stroke-linecap="round" opacity=".7"/>
+            <circle cx="330" cy="748" r="15" fill="#3d442c"/><circle cx="330" cy="748" r="9" fill="#5d6440"/><path d="M330 739 C 336 744, 336 752, 330 757 C 324 752, 324 744, 330 739Z" fill="#7c8452" opacity=".8"/>
+          </g>
+          <!-- small pool catching dawn -->
+          <g filter="url(#inkRough)" opacity=".9">
+            <ellipse cx="292" cy="832" rx="178" ry="38" fill="#41553f"/>
+            <ellipse cx="292" cy="828" rx="164" ry="30" fill="url(#poolGrad)"/>
+            <path d="M160 822 C 232 814, 330 818, 404 812" fill="none" stroke="#f7e6bb" stroke-width="3" opacity=".38"/>
+            <path d="M196 836 C 260 830, 330 834, 386 828" fill="none" stroke="#d9dcc0" stroke-width="2" opacity=".28"/>
+            <ellipse cx="238" cy="814" rx="17" ry="4.5" fill="#85945f" opacity=".7"/>
+            <ellipse cx="338" cy="842" rx="24" ry="5" fill="#6f8258" opacity=".6"/>
+          </g>
+          <!-- a few young trees, mist-veiled -->
+          <g opacity=".9" filter="url(#inkRough)">
+            <path d="M412 690 C 408 624, 422 588, 416 542 L428 540 C 436 592, 422 630, 430 692 Z" fill="#4e5c3f"/>
+            <path d="M420 566 C 446 548, 462 526, 488 520 M418 596 C 396 578, 376 562, 354 556" class="inkline" stroke="#48563a" stroke-width="3"/>
+            <path d="M366 542 C 390 512, 438 506, 470 520 C 498 532, 488 562, 456 570 C 420 580, 382 570, 366 542Z" fill="#586d48" opacity=".8"/>
+          </g>
+          <g opacity=".72" filter="url(#inkRough)">
+            <path d="M1470 700 C 1464 628, 1482 590, 1472 540 L1484 538 C 1494 596, 1478 636, 1488 702 Z" fill="#4a5840"/>
+            <path d="M1420 556 C 1448 526, 1490 518, 1524 534 C 1550 546, 1538 574, 1504 580 C 1470 588, 1438 580, 1420 556Z" fill="#526844" opacity=".8"/>
+          </g>
+          <!-- the giant's long dawn shadow, pooled across the moss -->
+          <path d="M648 786 C 520 792, 402 812, 300 846 C 268 856, 266 872, 300 878 C 420 858, 552 842, 706 830 C 748 826, 742 790, 648 786 Z" fill="#2f4a3c" opacity=".34" filter="url(#soft2)"/>
+          <path d="M760 818 C 880 802, 1010 804, 1120 820 C 1060 836, 930 842, 822 834 C 786 832, 762 828, 760 818 Z" fill="#2c4537" opacity=".28"/>
+        </g>
+
+        <!-- THE ROBOT : inserted below -->
+        <g id="robot" data-art="moss-giant">
+          <defs>
+            <linearGradient id="plateLit" x1="0" y1="0" x2=".85" y2="1">
+              <stop offset="0" stop-color="#ded8c2"/><stop offset=".45" stop-color="#c3bfa9"/>
+              <stop offset=".78" stop-color="#9fa593"/><stop offset="1" stop-color="#828f80"/>
+            </linearGradient>
+            <linearGradient id="plateMid" x1="0" y1="0" x2=".8" y2="1">
+              <stop offset="0" stop-color="#b6b5a0"/><stop offset=".55" stop-color="#959c8b"/>
+              <stop offset="1" stop-color="#6b7b70"/>
+            </linearGradient>
+            <linearGradient id="plateShade" x1="0" y1="0" x2=".6" y2="1">
+              <stop offset="0" stop-color="#879487"/><stop offset=".6" stop-color="#687a6e"/>
+              <stop offset="1" stop-color="#4c5f56"/>
+            </linearGradient>
+            <linearGradient id="plateDeep" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#5b6b60"/><stop offset="1" stop-color="#39483f"/>
+            </linearGradient>
+            <linearGradient id="rustGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#b9865a"/><stop offset=".55" stop-color="#96603c"/><stop offset="1" stop-color="#6f442c"/>
+            </linearGradient>
+            <linearGradient id="mossGrad" x1="0" y1="0" x2=".3" y2="1">
+              <stop offset="0" stop-color="#a7b76c"/><stop offset=".5" stop-color="#7f9550"/><stop offset="1" stop-color="#4f693c"/>
+            </linearGradient>
+            <linearGradient id="mossLight" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#c4cf8c"/><stop offset=".7" stop-color="#93a75c"/><stop offset="1" stop-color="#6c8348"/>
+            </linearGradient>
+            <linearGradient id="legMetal" x1="0" y1="0" x2="1" y2=".4">
+              <stop offset="0" stop-color="#b3b39e"/><stop offset=".6" stop-color="#8e9888"/><stop offset="1" stop-color="#5d6e63"/>
+            </linearGradient>
+            <radialGradient id="coreMetal" cx=".42" cy=".36" r=".7">
+              <stop offset="0" stop-color="#cfc7ab"/><stop offset=".6" stop-color="#a09c82"/><stop offset="1" stop-color="#6f7461"/>
+            </radialGradient>
+            <radialGradient id="eyeGlowGrad" cx=".5" cy=".5" r=".5">
+              <stop offset="0" stop-color="#fffbe8"/><stop offset=".4" stop-color="#ffe6a3"/><stop offset="1" stop-color="#f0b45c" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+
+          <!-- contact shadow -->
+          <ellipse id="robotShadow" cx="958" cy="790" rx="272" ry="42" fill="#24352c" opacity=".55" filter="url(#soft8)"/>
+          <ellipse cx="958" cy="786" rx="196" ry="24" fill="#1e2f26" opacity=".45"/>
+
+          <!-- ============ THRUSTER SPILL (behind, appears at ignition) ============ -->
+          <g id="thrusterGlow" opacity="0">
+            <ellipse cx="878" cy="756" rx="86" ry="40" fill="url(#coreLight)" opacity=".8"/>
+            <ellipse cx="1052" cy="762" rx="96" ry="44" fill="url(#coreLight)" opacity=".7"/>
+            <path d="M850 748 C 842 802, 830 838, 812 872 L902 872 C 900 828, 900 790, 910 746 Z" fill="#ffe2a0" opacity=".55" filter="url(#soft8)"/>
+            <path d="M1026 752 C 1026 806, 1032 846, 1048 882 L1122 870 C 1098 828, 1084 790, 1088 748 Z" fill="#ffd995" opacity=".5" filter="url(#soft8)"/>
+          </g>
+
+          <!-- ============ FAR LEG : raised knee ============ -->
+          <g id="legFar">
+            <path d="M1000 646 C 1028 598, 1074 578, 1104 596 C 1128 612, 1124 644, 1098 654 C 1074 664, 1048 664, 1028 694 Z" fill="url(#legMetal)" stroke="#36453a" stroke-width="3.4"/>
+            <path d="M1008 648 C 1034 610, 1070 592, 1096 604" fill="none" stroke="#dfd8c0" stroke-width="4" opacity=".5"/>
+            <path d="M1018 660 C 1042 632, 1068 618, 1094 624" fill="none" stroke="#4d6054" stroke-width="2.4" opacity=".8"/>
+            <!-- knee cap layered -->
+            <path d="M1064 588 C 1092 574, 1124 584, 1132 608 C 1138 630, 1118 650, 1092 648 C 1070 646, 1056 620, 1064 588 Z" fill="url(#plateMid)" stroke="#36453a" stroke-width="3.4"/>
+            <path d="M1076 598 C 1092 590, 1112 596, 1118 610 C 1122 624, 1108 634, 1092 632" fill="none" stroke="#e3dbc2" stroke-width="2.6" opacity=".5"/>
+            <path d="M1080 644 C 1094 650, 1112 646, 1122 636" fill="none" stroke="#3c4c41" stroke-width="2"/>
+            <!-- shin -->
+            <path d="M1082 646 C 1076 686, 1088 718, 1096 754 L1150 760 C 1142 718, 1138 682, 1142 640 C 1122 656, 1100 658, 1082 646 Z" fill="url(#plateShade)" stroke="#33423a" stroke-width="3.4"/>
+            <path d="M1100 656 C 1098 690, 1106 720, 1114 748 L1130 750 C 1124 716, 1120 684, 1124 654 Z" fill="#c9c6b0" opacity=".38"/>
+            <path d="M1088 690 L1140 694 M1092 710 L1144 714" stroke="#3b4b40" stroke-width="2" opacity=".75"/>
+            <circle cx="1120" cy="672" r="4.6" fill="#5c6c5e" stroke="#324137" stroke-width="1.6"/>
+            <!-- foot -->
+            <path d="M1082 752 C 1104 742, 1160 744, 1184 758 C 1204 770, 1194 788, 1162 790 L 1098 792 C 1078 790, 1070 766, 1082 752 Z" fill="url(#plateMid)" stroke="#33423a" stroke-width="3.6"/>
+            <path d="M1092 760 C 1128 754, 1164 758, 1180 768" fill="none" stroke="#e6ddc4" stroke-width="3" opacity=".45"/>
+            <path d="M1094 776 L1170 776 M1100 784 L1154 784" stroke="#3d4e42" stroke-width="2" opacity=".8"/>
+            <!-- moss over far shin and foot -->
+            <path d="M1078 700 C 1072 726, 1080 748, 1076 772 C 1090 786, 1124 790, 1150 782 C 1136 768, 1146 738, 1140 714 C 1120 724, 1096 718, 1078 700 Z" fill="url(#mossGrad)" opacity=".92"/>
+            <path d="M1084 706 C 1102 718, 1124 720, 1138 714 M1082 738 C 1102 748, 1124 748, 1141 738" fill="none" stroke="#4b653c" stroke-width="2" opacity=".8"/>
+            <g fill="url(#mossLight)" opacity=".9">
+              <circle cx="1088" cy="724" r="5"/><circle cx="1102" cy="732" r="3.6"/><circle cx="1120" cy="728" r="4.8"/>
+              <circle cx="1134" cy="746" r="4.2"/><circle cx="1112" cy="766" r="5.6"/><circle cx="1092" cy="758" r="3.8"/>
+            </g>
+            <g stroke="#5b713e" stroke-width="1.4" fill="none">
+              <path d="M1094 744 C 1100 738, 1108 738, 1112 742"/><path d="M1122 720 C 1128 714, 1136 716, 1140 720"/>
+            </g>
+            <!-- thigh armour + skirt overlap -->
+            <path d="M998 636 C 1024 606, 1054 598, 1076 604 C 1058 618, 1040 626, 1034 644 C 1020 652, 1006 650, 998 636 Z" fill="#627468" stroke="#34443a" stroke-width="3"/>
+            <!-- rust bleeding on shin -->
+            <path d="M1132 662 C 1134 676, 1130 692, 1136 704 C 1131 696, 1128 680, 1126 664 Z" fill="url(#rustGrad)" opacity=".8"/>
+          </g>
+
+          <!-- ============ NEAR LEG : folded, knee to the earth ============ -->
+          <g id="legNear">
+            <!-- folded shin/back mass -->
+            <path d="M858 690 C 830 714, 806 738, 792 772 L 940 786 C 934 756, 928 732, 912 706 Z" fill="#4f6156" stroke="#324138" stroke-width="3.2"/>
+            <!-- thigh -->
+            <path d="M890 636 C 852 640, 800 666, 762 692 C 738 710, 732 742, 752 756 C 776 774, 822 762, 846 742 C 870 722, 892 700, 908 672 Z" fill="url(#legMetal)" stroke="#33423a" stroke-width="3.6"/>
+            <path d="M884 648 C 846 654, 800 678, 772 704" fill="none" stroke="#e0d8bd" stroke-width="4" opacity=".42"/>
+            <path d="M790 734 C 822 720, 852 696, 874 670" fill="none" stroke="#4a5d51" stroke-width="2.2" opacity=".8"/>
+            <!-- knee plate facing viewer -->
+            <path d="M736 682 C 766 656, 818 656, 842 680 C 864 702, 852 742, 818 756 C 786 770, 742 756, 730 728 C 724 712, 726 694, 736 682 Z" fill="url(#plateMid)" stroke="#33423a" stroke-width="3.8"/>
+            <path d="M750 686 C 774 668, 812 668, 830 682 C 842 692, 840 712, 826 724" fill="none" stroke="#e6ddc1" stroke-width="3" opacity=".5"/>
+            <path d="M746 716 C 776 704, 812 706, 838 720" fill="none" stroke="#4e6153" stroke-width="2.4" opacity=".8"/>
+            <path d="M754 738 C 784 730, 814 732, 838 742" fill="none" stroke="#3e5045" stroke-width="2" opacity=".7"/>
+            <!-- big moss blanket on knee, spilling to ground -->
+            <path d="M732 700 C 742 672, 780 656, 818 662 C 850 668, 862 692, 856 716 C 846 750, 804 770, 772 782 C 748 790, 726 776, 726 752 C 726 734, 724 716, 732 700 Z" fill="url(#mossGrad)"/>
+            <path d="M736 706 C 764 684, 806 678, 840 690 C 826 706, 792 716, 760 716 C 748 726, 744 742, 744 758" fill="none" stroke="#50693e" stroke-width="2.4" opacity=".9"/>
+            <path d="M744 692 C 760 674, 792 662, 822 668 C 802 678, 776 690, 762 706" fill="url(#mossLight)" opacity=".85"/>
+            <g fill="#a6b76b" opacity=".85">
+              <circle cx="772" cy="676" r="5.4"/><circle cx="792" cy="670" r="3.8"/><circle cx="812" cy="678" r="4.6"/>
+              <circle cx="748" cy="726" r="4.6"/><circle cx="782" cy="704" r="3.4"/><circle cx="828" cy="702" r="4.2"/>
+              <circle cx="764" cy="762" r="5"/><circle cx="800" cy="746" r="4.4"/>
+            </g>
+            <!-- little flowers on knee -->
+            <g>
+              <g transform="translate(764 678)">
+                <circle r="7" fill="#f4ebd8"/><circle cx="7" cy="1" r="6" fill="#f0e4cc"/><circle cx="-6" cy="2" r="5.6" fill="#f6efdc"/><circle cx="0" cy="-6" r="5.4" fill="#efe3c8"/><circle cx="1" cy="1" r="2.6" fill="#e3b95f"/>
+              </g>
+              <g transform="translate(806 690) scale(.8)">
+                <circle r="6.5" fill="#f6efdd"/><circle cx="6" cy="0" r="5.6" fill="#efdfc4"/><circle cx="-6" cy="1" r="5.2" fill="#f7f1e2"/><circle cx="0" cy="-6" r="5" fill="#f2e8d3"/><circle cx="0" cy="0" r="2.4" fill="#dfb05a"/>
+              </g>
+              <g transform="translate(742 728) scale(.7)">
+                <circle r="6" fill="#efd4cd"/><circle cx="6" cy="0" r="5.4" fill="#f5e5dc"/><circle cx="-6" cy="1" r="5" fill="#ebc9c4"/><circle cx="0" cy="0" r="2.2" fill="#e7bd66"/>
+              </g>
+            </g>
+            <!-- trailing ground vines -->
+            <path d="M760 776 C 758 796, 744 806, 736 818 M792 780 C 792 798, 802 806, 800 822" fill="none" stroke="#5a6e3e" stroke-width="2.6"/>
+            <g fill="#7f954f">
+              <path d="M736 812 c-8-2-12-10-10-16 8 0 14 6 16 12Z"/><path d="M800 816 c8-2 12-10 10-16-8 0-14 6-16 12Z"/>
+              <path d="M744 796 c-7 0-12-6-12-12 7-1 12 4 14 9Z"/>
+            </g>
+          </g>
+
+          <!-- ============ HIPS & SKIRT ARMOUR (fixed to the ground) ============ -->
+          <g id="hips">
+            <path d="M866 604 C 900 588, 1004 588, 1044 606 C 1058 640, 1052 676, 1038 700 C 1000 716, 906 720, 866 700 C 846 674, 846 634, 866 604 Z" fill="url(#plateDeep)" stroke="#2f3f36" stroke-width="3.4"/>
+            <path d="M876 612 C 914 600, 992 598, 1030 612 C 1042 636, 1040 662, 1028 682 C 990 694, 910 696, 878 682 C 862 660, 862 636, 876 612 Z" fill="#6d7d6d" opacity=".55"/>
+            <!-- skirt plates -->
+            <path d="M862 664 C 894 674, 930 678, 950 676 L 948 726 C 916 736, 880 726, 852 706 Z" fill="url(#plateMid)" stroke="#33423a" stroke-width="3.2"/>
+            <path d="M952 676 C 984 676, 1022 670, 1046 660 L 1062 700 C 1028 726, 986 736, 950 728 Z" fill="url(#plateShade)" stroke="#33423a" stroke-width="3.2"/>
+            <path d="M872 676 C 900 682, 928 684, 944 682 M956 682 C 984 682, 1014 676, 1038 668" fill="none" stroke="#ded7bf" stroke-width="2.2" opacity=".45"/>
+            <path d="M900 704 C 918 710, 934 712, 946 710 M964 710 C 984 708, 1004 702, 1022 694" fill="none" stroke="#3a4a40" stroke-width="2" opacity=".8"/>
+            <!-- hip bolts & damage -->
+            <circle cx="886" cy="626" r="6" fill="#899784" stroke="#324137" stroke-width="2"/><circle cx="1018" cy="624" r="5.4" fill="#899784" stroke="#324137" stroke-width="2"/>
+            <path d="M920 704 C 936 696, 950 700, 958 710 C 946 718, 932 718, 920 704 Z" fill="url(#rustGrad)" opacity=".9"/>
+            <path d="M884 648 C 900 640, 918 640, 928 646" fill="none" stroke="#b07d52" stroke-width="2" opacity=".7"/>
+            <!-- moss on skirt + ground creeping -->
+            <path d="M850 676 C 870 662, 902 662, 918 674 C 930 684, 920 700, 900 704 C 878 708, 852 696, 850 676 Z" fill="url(#mossGrad)"/>
+            <path d="M1002 662 C 1026 654, 1052 664, 1060 682 C 1066 702, 1044 714, 1022 708 C 1002 702, 994 682, 1002 662 Z" fill="url(#mossGrad)"/>
+            <path d="M836 700 C 852 684, 878 680, 894 692 C 878 702, 854 710, 836 700 Z" fill="url(#mossLight)" opacity=".9"/>
+            <g fill="#9fb168" opacity=".85">
+              <circle cx="864" cy="680" r="4.4"/><circle cx="884" cy="674" r="3.2"/><circle cx="906" cy="686" r="4.8"/>
+              <circle cx="1022" cy="676" r="4.6"/><circle cx="1040" cy="686" r="3.4"/><circle cx="840" cy="694" r="3.8"/>
+            </g>
+            <!-- central hanging moss curtain -->
+            <path d="M912 712 C 924 734, 920 756, 930 776 C 944 768, 952 748, 956 726 C 946 718, 928 712, 912 712 Z" fill="url(#mossGrad)" opacity=".9"/>
+            <path d="M1000 708 C 1010 730, 1006 752, 1018 768 C 1030 756, 1034 736, 1038 716 Z" fill="url(#mossGrad)" opacity=".85"/>
+            <!-- thruster housings tucked under skirt -->
+            <g opacity=".9">
+              <path d="M872 700 C 890 694, 912 698, 922 712 L 910 748 C 894 756, 874 748, 866 734 Z" fill="#3c4c42" stroke="#2c3a32" stroke-width="2.6"/>
+              <path d="M876 712 L914 712 M874 722 L910 722 M872 732 L904 732" stroke="#728272" stroke-width="2" opacity=".8"/>
+              <path d="M990 704 C 1006 692, 1030 696, 1040 710 L 1030 744 C 1012 752, 992 744, 986 730 Z" fill="#3c4c42" stroke="#2c3a32" stroke-width="2.6"/>
+              <path d="M996 714 L1034 714 M994 724 L1030 724 M992 734 L1024 734" stroke="#728272" stroke-width="2" opacity=".8"/>
+            </g>
+          </g>
+
+          <!-- ============ TORSO (animated) ============ -->
+          <g id="torso">
+
+            <!-- abdomen: ribbed flexible spine area -->
+            <g id="abdomen">
+              <path d="M884 578 C 916 566, 992 566, 1022 580 L 1032 646 C 1000 664, 908 666, 876 646 Z" fill="#4d5e53" stroke="#2e3d35" stroke-width="3"/>
+              <path d="M892 588 C 926 580, 984 580, 1016 590 M888 602 C 924 594, 986 594, 1020 604 M884 616 C 922 608, 988 608, 1026 618 M880 630 C 920 622, 990 622, 1030 632" fill="none" stroke="#8a9886" stroke-width="4" opacity=".5"/>
+              <path d="M900 638 C 906 654, 896 664, 902 676 M1012 640 C 1008 656, 1018 664, 1012 678" fill="none" stroke="#39493f" stroke-width="3"/>
+            </g>
+
+            <!-- far arm (viewer right) -->
+            <g id="armFar">
+              <!-- upper arm -->
+              <path d="M1104 508 C 1136 512, 1160 534, 1172 566 C 1182 594, 1178 616, 1164 632 L 1126 608 C 1114 580, 1104 548, 1104 508 Z" fill="url(#plateShade)" stroke="#324138" stroke-width="3.4"/>
+              <path d="M1114 522 C 1138 530, 1156 548, 1164 574" fill="none" stroke="#dcd5bc" stroke-width="2.6" opacity=".4"/>
+              <!-- elbow -->
+              <path d="M1120 602 C 1140 590, 1168 598, 1176 618 C 1184 640, 1168 658, 1146 656 C 1124 654, 1112 622, 1120 602 Z" fill="url(#plateMid)" stroke="#324138" stroke-width="3.4"/>
+              <circle cx="1148" cy="624" r="8" fill="#55665a" stroke="#2f3d34" stroke-width="2"/><circle cx="1148" cy="624" r="3" fill="#93a08b"/>
+              <!-- forearm -->
+              <path d="M1138 650 C 1158 662, 1152 686, 1132 698 C 1116 708, 1094 702, 1086 684 C 1078 666, 1090 646, 1108 642 Z" fill="url(#plateMid)" stroke="#324138" stroke-width="3.4"/>
+              <path d="M1102 654 C 1122 650, 1140 660, 1144 676" fill="none" stroke="#e1d9bf" stroke-width="2.4" opacity=".45"/>
+              <!-- hand upon the knee -->
+              <path d="M1078 660 C 1080 644, 1096 634, 1112 638 C 1126 642, 1132 656, 1130 668 L 1128 686 C 1112 694, 1090 686, 1082 674 Z" fill="url(#plateLit)" stroke="#35443a" stroke-width="3.2"/>
+              <path d="M1100 646 C 1096 660, 1096 676, 1104 688 M1116 646 C 1114 660, 1114 674, 1120 684" fill="none" stroke="#3f5045" stroke-width="2.2"/>
+              <path d="M1070 664 C 1064 674, 1068 682, 1078 686" fill="none" stroke="#35443a" stroke-width="3" stroke-linecap="round"/>
+              <!-- moss + rust on far arm -->
+              <path d="M1128 554 C 1150 560, 1166 578, 1170 598 C 1156 604, 1138 594, 1128 580 C 1122 570, 1122 560, 1128 554 Z" fill="url(#mossGrad)" opacity=".92"/>
+              <path d="M1110 648 C 1122 642, 1138 648, 1142 662 C 1130 668, 1116 662, 1110 648 Z" fill="url(#mossLight)" opacity=".8"/>
+              <path d="M1158 600 C 1160 614, 1156 624, 1160 638" stroke="url(#rustGrad)" stroke-width="4" fill="none" opacity=".75"/>
+              <g fill="#a4b56c" opacity=".8"><circle cx="1144" cy="578" r="4"/><circle cx="1156" cy="588" r="3.2"/><circle cx="1124" cy="664" r="3.4"/></g>
+            </g>
+
+            <!-- ========== chest ========== -->
+            <g id="chest">
+              <!-- back mass / shoulder yoke -->
+              <path d="M818 454 C 850 416, 1042 410, 1082 450 C 1104 500, 1084 562, 1052 596 C 1000 622, 916 622, 868 596 C 834 562, 804 502, 818 454 Z" fill="url(#plateMid)" stroke="#2f3e35" stroke-width="4.2"/>
+              <!-- rim light on yoke -->
+              <path d="M840 448 C 878 422, 1014 418, 1064 446" fill="none" stroke="#f3e3bb" stroke-width="5" opacity=".5"/>
+              <!-- left pectoral plate -->
+              <path d="M832 466 C 862 448, 930 444, 954 456 L 950 548 C 918 570, 866 566, 842 540 C 826 518, 824 488, 832 466 Z" fill="url(#plateLit)" stroke="#314037" stroke-width="3.6"/>
+              <path d="M842 478 C 870 464, 918 460, 944 468" fill="none" stroke="#f0e5c6" stroke-width="3" opacity=".55"/>
+              <!-- faded wing crest painted on the left breast -->
+              <g opacity=".55" transform="translate(884 505) rotate(-9)">
+                <path d="M0 20 C 10 6, 28 -2, 46 0 C 34 8, 30 18, 32 28 C 22 22, 10 22, 0 20 Z" fill="#7f9b8d" stroke="#5d7a6c" stroke-width="1.6"/>
+                <path d="M4 14 C 16 6, 28 2, 38 2" fill="none" stroke="#d9d2b6" stroke-width="1.6"/>
+                <path d="M-6 26 C 2 18, 8 18, 14 20" fill="none" stroke="#7f9b8d" stroke-width="2.4"/>
+              </g>
+              <!-- paint chips on pectoral -->
+              <g stroke="#4b5c50" stroke-width="1.5" fill="#8d9683">
+                <path d="M864 488 C 874 484, 882 490, 880 500 C 872 504, 862 500, 864 488 Z"/>
+                <path d="M920 542 C 930 536, 940 542, 938 550 C 930 554, 920 552, 920 542 Z"/>
+              </g>
+              <path d="M872 476 C 882 490, 878 508, 888 520 M912 470 C 920 480, 918 492, 926 500" fill="none" stroke="#7a8779" stroke-width="1.4" opacity=".7"/>
+
+              <!-- collar and neck housing -->
+              <path d="M892 424 C 918 408, 984 408, 1008 424 L 1020 462 C 990 448, 918 448, 884 462 Z" fill="url(#plateShade)" stroke="#2f3d34" stroke-width="3.4"/>
+              <path d="M900 428 C 924 418, 978 418, 1000 428" fill="none" stroke="#e5dcc1" stroke-width="2.6" opacity=".45"/>
+              <path d="M900 448 C 924 440, 978 440, 1002 450 L 996 468 C 972 460, 932 460, 908 470 Z" fill="#405247" stroke="#2b3a31" stroke-width="2"/>
+
+              <!-- right pectoral / intake block -->
+              <path d="M956 458 C 992 446, 1052 454, 1068 478 C 1076 512, 1064 552, 1038 574 C 1018 586, 990 584, 972 574 L 958 548 Z" fill="url(#plateShade)" stroke="#2f3e35" stroke-width="3.6"/>
+              <path d="M968 470 C 998 462, 1044 468, 1058 486" fill="none" stroke="#dfd7bf" stroke-width="2.8" opacity=".4"/>
+              <!-- intake slats -->
+              <g stroke="#2f3e35" stroke-width="3" opacity=".8">
+                <path d="M994 490 L 1052 486 M990 502 L 1058 498 M988 514 L 1060 510 M990 526 L 1056 524 M996 538 L 1050 538"/>
+              </g>
+              <g stroke="#b9b7a0" stroke-width="1.4" opacity=".55">
+                <path d="M996 486 L 1050 482 M992 498 L 1056 494 M990 510 L 1058 506 M992 522 L 1054 520 M998 534 L 1048 534"/>
+              </g>
+              <path d="M985 548 C 1008 558, 1034 554, 1050 540" fill="none" stroke="#35463b" stroke-width="2.6" opacity=".8"/>
+
+              <!-- sternum -->
+              <path d="M944 458 C 956 450, 972 450, 982 458 L 980 580 C 970 592, 954 592, 944 580 Z" fill="#7f8d7c" stroke="#2f3e35" stroke-width="2.8"/>
+              <path d="M952 468 L 972 468 L 970 566 L 952 566 Z" fill="#9aa38d" opacity=".5"/>
+              <path d="M956 472 L 968 472 M955 484 L 969 484 M955 496 L 969 496" stroke="#46574b" stroke-width="1.6" opacity=".6"/>
+
+              <!-- ===== CORE ===== -->
+              <g id="core">
+                <ellipse id="chestAura" cx="952" cy="516" rx="150" ry="132" fill="url(#coreLight)" opacity="0" style="mix-blend-mode:screen" filter="url(#soft8)"/>
+                <!-- outer housing -->
+                <path d="M902 470 C 930 454, 976 454, 1000 472 C 1018 496, 1016 540, 998 562 C 972 582, 928 580, 906 560 C 888 538, 886 494, 902 470 Z" fill="url(#coreMetal)" stroke="#2e3d34" stroke-width="4"/>
+                <path d="M904 474 C 930 460, 974 460, 996 476" fill="none" stroke="#eee3c5" stroke-width="2.6" opacity=".6"/>
+                <!-- bolts -->
+                <g fill="#5c6d5f" stroke="#2c3b32" stroke-width="1.6">
+                  <circle cx="910" cy="482" r="4"/><circle cx="994" cy="482" r="4"/><circle cx="908" cy="548" r="4"/><circle cx="996" cy="548" r="4"/>
+                  <circle cx="952" cy="466" r="3.6"/><circle cx="952" cy="564" r="3.6"/>
+                </g>
+                <!-- recessed ring -->
+                <path d="M916 488 C 936 474, 970 474, 988 490 C 1002 508, 1000 538, 984 552 C 962 566, 938 564, 922 548 C 908 532, 908 504, 916 488 Z" fill="#3d4f45" stroke="#2b3a31" stroke-width="2.6"/>
+                <!-- petal plates -->
+                <g fill="#a9a88e" stroke="#4a5a4c" stroke-width="1.8">
+                  <path d="M950 486 C 960 486, 968 492, 970 500 C 962 504, 952 502, 948 496 Z"/>
+                  <path d="M978 496 C 988 502, 990 512, 986 520 C 978 518, 972 512, 972 504 Z"/>
+                  <path d="M978 534 C 986 538, 986 548, 980 556 C 972 552, 968 544, 970 536 Z"/>
+                  <path d="M950 552 C 960 552, 966 558, 964 566 C 954 568, 946 564, 944 556 Z"/>
+                  <path d="M922 534 C 916 528, 916 518, 922 510 C 930 514, 934 522, 932 530 Z"/>
+                  <path d="M924 500 C 930 492, 940 488, 948 492 C 944 500, 936 506, 928 506 Z"/>
+                </g>
+                <circle cx="952" cy="516" r="26" fill="#2c3b33" stroke="#57695a" stroke-width="2"/>
+                <circle cx="952" cy="516" r="17" fill="#6e6f54"/>
+                <!-- glow -->
+                <g id="coreGlow" opacity="0">
+                  <circle cx="952" cy="516" r="92" fill="url(#coreLight)" filter="url(#soft8)"/>
+                  <circle cx="952" cy="516" r="24" fill="url(#coreLight)" filter="url(#coreBloom)"/>
+                  <circle cx="952" cy="516" r="12" fill="#fffaea"/>
+                  <path d="M952 490 C 962 504, 962 528, 952 542 C 942 528, 942 504, 952 490 Z" fill="#fff6d6" opacity=".9"/>
+                </g>
+                <!-- vines crossing the heart -->
+                <path d="M904 474 C 912 496, 908 520, 918 540 C 928 556, 918 574, 928 590" fill="none" stroke="#586c3c" stroke-width="3.2"/>
+                <path d="M1000 500 C 988 518, 994 538, 982 554 C 976 564, 978 576, 970 584" fill="none" stroke="#5f7340" stroke-width="2.8"/>
+                <g fill="#80984e">
+                  <path d="M910 502 c-9-1-14-8-13-15 8-1 14 5 15 11Z"/>
+                  <path d="M914 534 c8-2 12-9 10-15-8 0-13 6-14 12Z"/>
+                  <path d="M989 520 c9 0 14-7 13-14-8-1-14 5-15 11Z"/>
+                  <path d="M978 558 c-8 2-12 9-10 15 8 0 13-6 14-12Z"/>
+                  <path d="M926 578 c-7 3-10 10-7 15 7-1 12-6 12-12Z"/>
+                </g>
+                <!-- moss creeping over core rim -->
+                <path d="M898 486 C 906 470, 924 462, 940 466 C 930 478, 926 490, 928 502 C 916 500, 904 496, 898 486 Z" fill="url(#mossGrad)"/>
+                <path d="M990 548 C 1000 540, 1010 544, 1012 556 C 1002 562, 994 558, 990 548 Z" fill="url(#mossLight)" opacity=".85"/>
+                <g fill="#9fb267" opacity=".85"><circle cx="910" cy="478" r="3.6"/><circle cx="928" cy="472" r="2.8"/><circle cx="1000" cy="554" r="3.2"/></g>
+              </g>
+
+              <!-- damage, rust streaks, moss across the chest -->
+              <g>
+                <path d="M1044 500 C 1042 522, 1048 540, 1044 558" fill="none" stroke="url(#rustGrad)" stroke-width="5" opacity=".8" stroke-linecap="round"/>
+                <path d="M870 540 C 868 558, 872 572, 866 586" fill="none" stroke="url(#rustGrad)" stroke-width="4.4" opacity=".75"/>
+                <path d="M928 588 C 938 580, 952 582, 960 592 C 948 600, 936 598, 928 588 Z" fill="#8a5b3b" opacity=".8"/>
+                <g stroke="#4a5b4e" stroke-width="1.5" opacity=".7" fill="none">
+                  <path d="M1004 476 C 1010 486, 1008 496, 1016 504"/><path d="M861 512 C 867 520, 864 528, 870 534"/>
+                  <path d="M928 470 C 934 478, 932 486, 938 492"/>
+                </g>
+                <path d="M826 500 C 838 486, 858 478, 876 480 C 864 492, 858 506, 862 520 C 848 520, 834 512, 826 500 Z" fill="url(#mossGrad)"/>
+                <path d="M1042 514 C 1056 508, 1068 516, 1068 530 C 1054 536, 1044 528, 1042 514 Z" fill="url(#mossGrad)" opacity=".9"/>
+                <g fill="#a3b169" opacity=".85">
+                  <circle cx="840" cy="492" r="4.2"/><circle cx="854" cy="488" r="3.2"/><circle cx="862" cy="504" r="4.6"/>
+                  <circle cx="1050" cy="520" r="4"/><circle cx="1058" cy="530" r="3"/>
+                </g>
+                <!-- small flowers at collar -->
+                <g transform="translate(1004 456) scale(.72)">
+                  <circle r="6" fill="#f4ead6"/><circle cx="6" cy="0" r="5.4" fill="#f7f0df"/><circle cx="-6" cy="1" r="5" fill="#efdfc7"/><circle cx="0" cy="-6" r="4.8" fill="#faf4e8"/><circle cx="0" cy="0" r="2.3" fill="#dfb25b"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- ========== NEAR SHOULDER & SAPLING ========== -->
+            <g id="shoulderNear">
+              <!-- sapling trunk -->
+              <path d="M772 430 C 764 402, 754 386, 738 370 C 748 368, 760 372, 770 380 C 778 366, 792 354, 808 350 C 796 368, 788 388, 786 408" fill="none" stroke="#4c5236" stroke-width="6" stroke-linecap="round"/>
+              <path d="M770 392 C 756 384, 742 382, 728 386 M782 372 C 784 356, 792 344, 802 336 M774 392 C 786 386, 800 384, 812 388" fill="none" stroke="#4c5236" stroke-width="3.4"/>
+              <g id="saplingLeaves" fill="#6e8649">
+                <path d="M734 372 c-20-10-28-30-20-46 20 4 32 22 30 40Z" opacity=".95"/>
+                <path d="M752 352 c-6-22 4-44 24-54 8 22-2 44-18 56Z" opacity=".9"/>
+                <path d="M786 338 c4-22 22-36 42-34-4 20-20 34-38 38Z"/>
+                <path d="M804 372 c20-10 42-6 54 10-18 12-40 10-54-2Z" opacity=".9"/>
+                <path d="M720 396 c-16-2-28-14-28-30 18-2 32 10 34 26Z" opacity=".8"/>
+                <path d="M814 396 c12-16 32-20 46-10-10 16-30 22-44 16Z" opacity=".85"/>
+              </g>
+              <g fill="#96a75f" opacity=".9">
+                <path d="M742 358 c-10-4-16-14-14-24 12 2 20 12 20 22Z"/>
+                <path d="M778 356 c4-12 16-18 26-14-4 12-14 18-24 18Z"/>
+                <path d="M800 382 c12-4 24 0 30 10-12 6-24 2-30-6Z"/>
+              </g>
+              <g fill="#f1e7d0">
+                <circle cx="740" cy="384" r="4.6"/><circle cx="748" cy="378" r="3.4"/><circle cx="732" cy="390" r="3"/>
+                <circle cx="810" cy="406" r="3.8"/><circle cx="818" cy="400" r="2.8"/>
+              </g>
+              <g fill="#e7c978"><circle cx="740" cy="384" r="1.6"/><circle cx="748" cy="378" r="1.2"/><circle cx="810" cy="406" r="1.4"/></g>
+
+              <!-- pauldron layers -->
+              <path d="M706 486 C 706 440, 736 412, 776 414 C 814 416, 842 446, 844 488 C 846 528, 826 556, 792 562 C 754 568, 716 544, 706 512 Z" fill="url(#plateMid)" stroke="#2d3c33" stroke-width="4.4"/>
+              <path d="M716 468 C 722 438, 746 422, 776 424 C 806 426, 826 448, 828 480" fill="none" stroke="#ede2c3" stroke-width="5" opacity=".5"/>
+              <path d="M712 504 C 730 486, 762 480, 792 486 C 824 492, 840 512, 836 534 C 816 552, 782 558, 754 548 C 732 540, 716 524, 712 504 Z" fill="url(#plateLit)" stroke="#2f3e35" stroke-width="3.4"/>
+              <path d="M724 512 C 748 498, 782 496, 808 506" fill="none" stroke="#f2e8cb" stroke-width="2.8" opacity=".45"/>
+              <!-- shoulder bolts and chipped edge -->
+              <g fill="#65766a" stroke="#2c3b32" stroke-width="1.8">
+                <circle cx="720" cy="512" r="5.4"/><circle cx="830" cy="524" r="5.4"/><circle cx="768" cy="548" r="5"/>
+              </g>
+              <path d="M826 446 C 838 446, 844 454, 840 464 C 832 466, 824 458, 826 446 Z" fill="#7a5b40"/>
+              <path d="M714 534 C 726 532, 734 540, 730 550 C 720 552, 712 544, 714 534 Z" fill="#8b6d50" opacity=".85"/>
+              <!-- rust runnels -->
+              <path d="M744 436 C 742 458, 748 474, 744 494" fill="none" stroke="url(#rustGrad)" stroke-width="4" opacity=".7"/>
+              <path d="M800 428 C 800 444, 794 454, 798 472" fill="none" stroke="url(#rustGrad)" stroke-width="3" opacity=".65"/>
+              <!-- heavy moss mantle over the pauldron -->
+              <path d="M708 464 C 714 430, 742 410, 774 412 C 808 414, 832 432, 838 462 C 812 452, 782 452, 762 466 C 742 480, 728 484, 708 478 Z" fill="url(#mossGrad)"/>
+              <path d="M716 456 C 734 434, 762 424, 790 428 C 772 438, 756 448, 748 462 C 734 464, 724 462, 716 456 Z" fill="url(#mossLight)" opacity=".9"/>
+              <path d="M792 420 C 814 424, 830 440, 836 458 C 820 452, 802 448, 788 452 C 782 440, 784 428, 792 420 Z" fill="url(#mossGrad)"/>
+              <g fill="#a9b873" opacity=".9">
+                <circle cx="726" cy="446" r="5"/><circle cx="742" cy="434" r="3.6"/><circle cx="762" cy="430" r="4.8"/>
+                <circle cx="784" cy="436" r="3.4"/><circle cx="806" cy="444" r="4.2"/><circle cx="820" cy="458" r="3"/>
+                <circle cx="736" cy="466" r="3.8"/>
+              </g>
+              <!-- little white flowers in the moss -->
+              <g fill="#f6efdd">
+                <circle cx="750" cy="444" r="4.2"/><circle cx="758" cy="438" r="3.2"/><circle cx="744" cy="438" r="3"/>
+                <circle cx="800" cy="432" r="3.6"/><circle cx="807" cy="438" r="2.8"/>
+                <circle cx="724" cy="458" r="3.4"/><circle cx="730" cy="452" r="2.6"/>
+              </g>
+              <g fill="#e2ba63"><circle cx="750" cy="444" r="1.5"/><circle cx="800" cy="432" r="1.3"/><circle cx="724" cy="458" r="1.2"/></g>
+              <!-- hanging moss fringe -->
+              <path d="M706 486 C 716 496, 714 512, 724 522 C 718 530, 708 526, 704 516 Z" fill="url(#mossGrad)" opacity=".9"/>
+              <path d="M838 480 C 844 490, 842 504, 850 514 C 842 518, 834 510, 832 498 Z" fill="url(#mossGrad)" opacity=".85"/>
+            </g>
+
+            <!-- ========== FAR SHOULDER ========== -->
+            <g id="shoulderFar">
+              <path d="M1066 466 C 1078 428, 1112 410, 1150 418 C 1188 426, 1206 456, 1200 492 C 1194 528, 1164 552, 1128 548 C 1094 544, 1062 514, 1066 466 Z" fill="url(#plateShade)" stroke="#2d3c33" stroke-width="4.4"/>
+              <path d="M1078 470 C 1088 442, 1116 428, 1146 434 C 1176 440, 1190 462, 1186 486" fill="none" stroke="#efe4c5" stroke-width="4.6" opacity=".55"/>
+              <path d="M1082 498 C 1106 482, 1140 480, 1170 490 C 1190 498, 1192 516, 1180 528 C 1156 540, 1118 534, 1098 520 C 1086 512, 1082 506, 1082 498 Z" fill="url(#plateMid)" stroke="#2f3e35" stroke-width="3.2"/>
+              <g fill="#637467" stroke="#2b3a31" stroke-width="1.8"><circle cx="1092" cy="508" r="5"/><circle cx="1176" cy="506" r="5"/><circle cx="1146" cy="528" r="4.4"/></g>
+              <!-- rust and damage -->
+              <path d="M1150 432 C 1152 452, 1146 470, 1152 488" fill="none" stroke="url(#rustGrad)" stroke-width="4" opacity=".7"/>
+              <path d="M1168 452 C 1180 448, 1188 456, 1186 466 C 1176 470, 1166 464, 1168 452 Z" fill="#7f5a3f"/>
+              <!-- moss -->
+              <path d="M1074 470 C 1084 440, 1112 424, 1140 428 C 1170 432, 1186 452, 1184 474 C 1162 462, 1138 462, 1120 474 C 1103 486, 1086 482, 1074 470 Z" fill="url(#mossGrad)"/>
+              <path d="M1090 458 C 1108 440, 1134 434, 1156 440 C 1138 448, 1124 458, 1116 470 C 1104 470, 1096 466, 1090 458 Z" fill="url(#mossLight)" opacity=".88"/>
+              <g fill="#a5b56f" opacity=".88">
+                <circle cx="1092" cy="452" r="4.4"/><circle cx="1112" cy="440" r="3.6"/><circle cx="1136" cy="442" r="4.6"/>
+                <circle cx="1156" cy="452" r="3.2"/><circle cx="1172" cy="464" r="3.8"/><circle cx="1084" cy="472" r="3"/>
+              </g>
+              <g fill="#f3ead6"><circle cx="1124" cy="450" r="3.8"/><circle cx="1132" cy="444" r="2.8"/><circle cx="1160" cy="466" r="3.2"/><circle cx="1098" cy="464" r="2.8"/></g>
+              <g fill="#e4bb64"><circle cx="1124" cy="450" r="1.4"/><circle cx="1160" cy="466" r="1.2"/><circle cx="1098" cy="464" r="1.1"/></g>
+              <!-- little ferns sprouting -->
+              <g stroke="#5e783f" stroke-width="2.2" fill="none">
+                <path d="M1184 480 C 1196 470, 1210 468, 1220 474"/><path d="M1190 490 C 1202 484, 1216 484, 1224 490"/>
+                <path d="M1090 488 C 1078 480, 1066 480, 1058 486"/>
+              </g>
+              <g fill="#849a53">
+                <ellipse cx="1204" cy="472" rx="7" ry="3" transform="rotate(-18 1204 472)"/>
+                <ellipse cx="1214" cy="476" rx="6" ry="2.6" transform="rotate(-4 1214 476)"/>
+                <ellipse cx="1072" cy="484" rx="6.4" ry="2.6" transform="rotate(12 1072 484)"/>
+              </g>
+              <!-- perched bird : hidden until the close-up -->
+              <g id="perchedBird" opacity="0">
+                <ellipse cx="1112" cy="466" rx="20" ry="11" fill="#f0e7d4"/>
+                <path d="M1096 464 C 1090 454, 1094 444, 1104 440 C 1112 438, 1122 442, 1126 450 C 1120 458, 1108 464, 1096 464 Z" fill="#f7f1e2"/>
+                <path d="M1112 468 C 1120 466, 1130 458, 1136 452 C 1138 458, 1134 466, 1124 471 Z" fill="#d8c9a9"/>
+                <path d="M1126 450 C 1130 450, 1133 452, 1135 454 C 1130 456, 1127 454, 1126 450 Z" fill="#e0aa58"/>
+                <circle cx="1129" cy="447" r="3.6" fill="#f4ecda"/>
+                <circle cx="1130" cy="447" r="1.2" fill="#3b3427"/>
+                <path d="M1098 466 C 1094 474, 1096 480, 1102 482 C 1106 476, 1106 470, 1102 466 Z" fill="#c8b896"/>
+                <path d="M1104 458 C 1110 454, 1118 456, 1120 462 C 1114 466, 1106 464, 1104 458 Z" fill="#cdbfa1" opacity=".8"/>
+                <path d="M1112 472 C 1112 480, 1108 484, 1112 486 M1120 470 C 1122 478, 1120 482, 1124 484" stroke="#8e7d5d" stroke-width="1.8" fill="none"/>
+              </g>
+            </g>
+
+            <!-- ========== NEAR ARM ========== -->
+            <g id="armNear">
+              <!-- upper arm -->
+              <path d="M780 512 C 754 522, 734 548, 722 578 C 714 596, 712 614, 716 630 L 756 626 C 764 596, 776 566, 800 544 Z" fill="url(#plateMid)" stroke="#324138" stroke-width="3.6"/>
+              <path d="M776 522 C 754 534, 738 556, 728 582" fill="none" stroke="#ede2c4" stroke-width="3" opacity=".45"/>
+              <path d="M740 562 C 748 576, 746 594, 736 606" fill="none" stroke="#485b4f" stroke-width="2.4" opacity=".8"/>
+              <!-- elbow joint -->
+              <path d="M708 612 C 724 598, 752 602, 762 620 C 772 640, 760 662, 738 664 C 716 666, 700 640, 708 612 Z" fill="url(#plateShade)" stroke="#2f3e35" stroke-width="3.6"/>
+              <circle cx="736" cy="632" r="10" fill="#4d5f53" stroke="#2c3b32" stroke-width="2.2"/><circle cx="736" cy="632" r="3.6" fill="#9aa48d"/>
+              <!-- forearm, massive -->
+              <path d="M718 654 C 742 646, 772 656, 784 676 C 796 696, 790 720, 772 730 L 728 722 C 712 706, 706 674, 718 654 Z" fill="url(#plateLit)" stroke="#324138" stroke-width="3.6"/>
+              <path d="M728 660 C 750 654, 770 662, 780 678" fill="none" stroke="#f0e6c8" stroke-width="3" opacity=".55"/>
+              <path d="M722 682 C 740 674, 762 678, 778 690 M720 700 C 740 694, 762 698, 776 708" fill="none" stroke="#45584c" stroke-width="2.2" opacity=".85"/>
+              <path d="M740 712 C 758 704, 774 710, 784 722" fill="none" stroke="#3c4e43" stroke-width="2" opacity=".7"/>
+              <!-- hand draped over the near knee -->
+              <path d="M770 702 C 790 692, 816 694, 832 708 C 848 722, 844 744, 824 752 C 800 762, 772 752, 762 736 C 754 724, 758 710, 770 702 Z" fill="url(#plateMid)" stroke="#324138" stroke-width="3.4"/>
+              <path d="M780 716 C 792 708, 808 710, 818 718 M778 730 C 790 724, 806 726, 816 732" fill="none" stroke="#46594d" stroke-width="2.2" opacity=".8"/>
+              <path d="M786 740 C 798 734, 812 736, 820 742" fill="none" stroke="#e2d9bd" stroke-width="2.2" opacity=".4"/>
+              <path d="M762 706 C 754 714, 752 724, 758 732" fill="none" stroke="#324138" stroke-width="3" stroke-linecap="round"/>
+              <!-- moss & rust on arm -->
+              <path d="M722 604 C 740 594, 760 604, 764 622 C 748 632, 730 626, 722 604 Z" fill="url(#mossGrad)" opacity=".9"/>
+              <path d="M748 668 C 766 660, 786 670, 792 686 C 776 696, 758 688, 748 668 Z" fill="url(#mossGrad)" opacity=".85"/>
+              <path d="M800 712 C 812 702, 830 704, 836 718 C 824 728, 808 726, 800 712 Z" fill="url(#mossLight)" opacity=".8"/>
+              <path d="M710 636 C 706 650, 712 662, 708 672" fill="none" stroke="url(#rustGrad)" stroke-width="4.4" opacity=".75"/>
+              <g fill="#a7b671" opacity=".82"><circle cx="734" cy="612" r="4"/><circle cx="752" cy="618" r="3.2"/><circle cx="768" cy="680" r="4.4"/><circle cx="816" cy="718" r="3.4"/></g>
+              <!-- hanging vine from elbow -->
+              <path d="M726 660 C 720 682, 726 698, 718 716" fill="none" stroke="#5d723f" stroke-width="2.4"/>
+              <g fill="#839a51"><ellipse cx="719" cy="680" rx="7" ry="3.2" transform="rotate(28 719 680)"/><ellipse cx="722" cy="700" rx="6" ry="2.8" transform="rotate(-18 722 700)"/><ellipse cx="714" cy="714" rx="5.4" ry="2.5" transform="rotate(22 714 714)"/></g>
+            </g>
+
+            <!-- ========== HEAD ========== -->
+            <g id="head">
+              <!-- rear crest / horns behind helm -->
+              <path d="M920 306 C 902 280, 878 260, 852 252 C 872 282, 884 300, 892 322 Z" fill="#6f8072" stroke="#2f3e35" stroke-width="3"/>
+              <path d="M952 292 C 954 258, 966 230, 986 210 C 982 244, 992 266, 1008 282 C 992 290, 974 294, 952 292 Z" fill="url(#plateShade)" stroke="#2f3e35" stroke-width="3.2"/>
+              <path d="M962 286 C 966 260, 974 240, 984 226" fill="none" stroke="#e9dfc1" stroke-width="2.4" opacity=".55"/>
+              <path d="M1018 330 C 1030 320, 1044 316, 1056 318 C 1044 328, 1036 338, 1030 350 Z" fill="#62746a" stroke="#2f3e35" stroke-width="2.4"/>
+
+              <!-- neck -->
+              <path d="M910 382 C 910 398, 908 410, 902 422 L1000 424 C 992 410, 990 396, 990 380 Z" fill="#4e5f54" stroke="#2c3b32" stroke-width="3"/>
+              <path d="M916 390 L984 388 M914 400 L988 398 M908 412 L996 410" stroke="#8a9787" stroke-width="2.6" opacity=".7"/>
+
+              <!-- helmet dome -->
+              <path d="M878 356 C 872 322, 884 294, 912 282 C 940 270, 980 272, 1002 288 C 1024 304, 1030 330, 1026 358 L 1012 374 C 1002 388, 982 398, 950 400 C 916 400, 890 390, 880 374 Z" fill="url(#plateLit)" stroke="#2b3a31" stroke-width="4"/>
+              <!-- rim light, upper right -->
+              <path d="M910 286 C 940 274, 978 276, 1000 290 C 1016 302, 1024 320, 1024 342" fill="none" stroke="#f6e7c1" stroke-width="4.4" opacity=".62"/>
+              <!-- dome panel seams -->
+              <path d="M902 288 C 920 306, 922 336, 914 364 M1004 294 C 994 314, 994 340, 1000 364 M950 276 L 950 292" fill="none" stroke="#56685b" stroke-width="2" opacity=".8"/>
+              <!-- heavy brow plate -->
+              <path d="M874 338 C 888 324, 918 318, 946 322 C 976 326, 1006 332, 1022 344 C 1024 354, 1020 362, 1012 366 L 886 366 C 878 358, 872 348, 874 338 Z" fill="url(#plateMid)" stroke="#28372f" stroke-width="3.6"/>
+              <path d="M884 336 C 906 326, 942 326, 966 330 C 990 334, 1008 340, 1016 346" fill="none" stroke="#eee2c2" stroke-width="2.6" opacity=".55"/>
+              <!-- eye sockets -->
+              <g>
+                <path d="M894 348 C 908 342, 930 344, 942 350 C 944 360, 938 366, 926 366 L 900 364 C 892 360, 890 354, 894 348 Z" fill="#283630" stroke="#23322b" stroke-width="2"/>
+                <path d="M962 344 C 976 340, 994 342, 1004 348 C 1008 354, 1004 360, 996 362 L 972 362 C 964 358, 960 350, 962 344 Z" fill="#283630" stroke="#23322b" stroke-width="2"/>
+                <!-- eyes (animated glow) -->
+                <g id="eyeGlow" opacity=".22">
+                  <path d="M900 351 C 910 347, 926 348, 936 352 L 932 359 C 922 356, 908 356, 900 358 Z" fill="#ffe6a2" filter="url(#coreBloom)"/>
+                  <path d="M966 348 C 976 345, 990 346, 998 350 L 994 357 C 986 354, 974 354, 966 356 Z" fill="#ffe6a2" filter="url(#coreBloom)"/>
+                </g>
+                <path d="M901 353 C 910 350, 924 350, 933 353" stroke="#fffbe6" stroke-width="2" fill="none" opacity=".75"/>
+                <path d="M967 350 C 976 347, 988 348, 996 351" stroke="#fffbe6" stroke-width="1.8" fill="none" opacity=".7"/>
+              </g>
+              <!-- cheek cheeks / center ridge -->
+              <path d="M944 366 C 956 362, 968 364, 976 370 L 966 394 C 958 400, 946 400, 938 394 Z" fill="#a6a68f" stroke="#2f3e35" stroke-width="2.6"/>
+              <path d="M950 370 L 964 370 L 960 390 L 950 390 Z" fill="#c5bda1" opacity=".55"/>
+              <!-- lower jaw / chin guard -->
+              <path d="M884 372 C 916 384, 986 382, 1014 368 C 1008 390, 988 404, 950 406 C 912 406, 892 394, 884 372 Z" fill="url(#plateShade)" stroke="#2a3930" stroke-width="3.4"/>
+              <path d="M898 380 C 922 388, 978 386, 1000 376" fill="none" stroke="#e7ddc1" stroke-width="2.2" opacity=".4"/>
+              <g stroke="#35453b" stroke-width="2.2" opacity=".85">
+                <path d="M910 390 L 908 402 M922 392 L 920 404 M934 393 L 933 405 M946 394 L 946 406 M958 394 L 959 405 M970 393 L 972 404 M982 391 L 985 401"/>
+              </g>
+              <!-- cheek pods / ear vents -->
+              <path d="M868 344 C 856 344, 848 352, 848 364 C 848 380, 858 390, 872 390 L 884 382 L 882 352 Z" fill="url(#plateMid)" stroke="#2b3a31" stroke-width="3.2"/>
+              <path d="M1016 340 C 1030 340, 1040 348, 1041 360 C 1042 374, 1034 384, 1020 386 L 1008 378 L 1010 348 Z" fill="url(#plateShade)" stroke="#2b3a31" stroke-width="3.2"/>
+              <circle cx="864" cy="366" r="8" fill="#5a6b5d" stroke="#2b3a31" stroke-width="2"/><circle cx="864" cy="366" r="3" fill="#8d9985"/>
+              <circle cx="1028" cy="362" r="8" fill="#4e6055" stroke="#2b3a31" stroke-width="2"/><circle cx="1028" cy="362" r="3" fill="#8d9985"/>
+              <path d="M852 350 L 878 348 M852 358 L 880 356 M1020 352 L 1040 354 M1018 360 L 1041 362" stroke="#3b4b40" stroke-width="1.8" opacity=".75"/>
+              <!-- small antenna / sensor bead -->
+              <path d="M1016 318 C 1024 300, 1034 288, 1046 280" fill="none" stroke="#54675a" stroke-width="3"/>
+              <circle cx="1048" cy="278" r="5" fill="#d9c89f" stroke="#4b5c4f" stroke-width="1.6"/>
+              <!-- damage and rust on face -->
+              <path d="M990 292 C 1000 288, 1008 294, 1006 304 C 996 308, 988 302, 990 292 Z" fill="#7c5b41" opacity=".9"/>
+              <path d="M976 306 C 982 314, 980 322, 986 330" fill="none" stroke="#8a5d3f" stroke-width="2.4" opacity=".8"/>
+              <path d="M892 332 C 898 330, 902 334, 900 340 C 894 342, 888 338, 892 332 Z" fill="#6b7d6c"/>
+              <path d="M1004 374 C 1002 384, 1006 390, 1002 398" fill="none" stroke="url(#rustGrad)" stroke-width="3" opacity=".8"/>
+              <path d="M882 350 C 880 362, 884 372, 880 380" fill="none" stroke="url(#rustGrad)" stroke-width="2.6" opacity=".7"/>
+              <!-- moss draped over the crown -->
+              <path d="M888 300 C 896 280, 916 268, 938 268 C 962 268, 982 278, 990 292 C 972 284, 954 288, 942 300 C 928 312, 908 312, 896 306 Z" fill="url(#mossGrad)"/>
+              <path d="M896 296 C 910 280, 928 274, 946 276 C 932 284, 920 292, 914 304 C 906 302, 900 300, 896 296 Z" fill="url(#mossLight)" opacity=".9"/>
+              <path d="M976 278 C 988 282, 996 292, 1000 304 C 990 298, 980 294, 970 296 C 966 288, 970 282, 976 278 Z" fill="url(#mossGrad)" opacity=".9"/>
+              <g fill="#a8b873" opacity=".9">
+                <circle cx="902" cy="292" r="4"/><circle cx="918" cy="282" r="3.2"/><circle cx="936" cy="280" r="4.2"/>
+                <circle cx="956" cy="284" r="3"/><circle cx="972" cy="290" r="3.6"/><circle cx="988" cy="300" r="2.8"/>
+                <circle cx="894" cy="306" r="3"/><circle cx="908" cy="306" r="2.4"/>
+              </g>
+              <!-- tiny flowers and hanging vines from the crest -->
+              <g fill="#f5ecd8"><circle cx="914" cy="286" r="3.6"/><circle cx="921" cy="282" r="2.6"/><circle cx="908" cy="282" r="2.4"/><circle cx="966" cy="296" r="3"/><circle cx="972" cy="292" r="2.2"/></g>
+              <g fill="#e3ba62"><circle cx="914" cy="286" r="1.3"/><circle cx="966" cy="296" r="1.1"/></g>
+              <path d="M866 262 C 858 280, 862 296, 852 310 C 846 320, 850 330, 844 340" fill="none" stroke="#5f7441" stroke-width="2.2"/>
+              <g fill="#839a51">
+                <ellipse cx="856" cy="282" rx="7" ry="3" transform="rotate(26 856 282)"/>
+                <ellipse cx="852" cy="302" rx="6" ry="2.6" transform="rotate(-22 852 302)"/>
+                <ellipse cx="848" cy="322" rx="5.6" ry="2.4" transform="rotate(18 848 322)"/>
+              </g>
+              <path d="M1006 282 C 1012 296, 1008 308, 1014 320" fill="none" stroke="#61773f" stroke-width="2"/>
+              <g fill="#8aa052"><ellipse cx="1010" cy="296" rx="6" ry="2.6" transform="rotate(-24 1010 296)"/><ellipse cx="1012" cy="312" rx="5.4" ry="2.4" transform="rotate(20 1012 312)"/></g>
+              <!-- the first ray finds the face -->
+              <g id="faceLight" opacity="0" style="mix-blend-mode:screen">
+                <path d="M892 330 C 922 316, 978 318, 1016 338 C 1004 364, 974 380, 940 376 C 914 372, 896 354, 892 330 Z" fill="#ffe8b6" filter="url(#soft8)"/>
+                <path d="M948 322 C 970 326, 988 334, 998 346 C 984 356, 966 360, 946 356 Z" fill="#fff5d9" opacity=".5" filter="url(#soft2)"/>
+              </g>
+            </g>
+
+            <!-- shoulder moss texture is enriched by JS; anchors for debris -->
+            <g id="torsoDebrisAnchors" opacity="0">
+              <circle cx="820" cy="470" r="2"/><circle cx="880" cy="560" r="2"/><circle cx="960" cy="600" r="2"/>
+              <circle cx="1040" cy="520" r="2"/><circle cx="1120" cy="540" r="2"/><circle cx="900" cy="480" r="2"/>
+              <circle cx="780" cy="520" r="2"/><circle cx="1020" cy="580" r="2"/><circle cx="760" cy="440" r="2"/>
+            </g>
+
+            <!-- long shoulder vines (front) -->
+            <g id="torsoVines">
+              <path d="M786 560 C 778 592, 792 612, 782 638 C 774 660, 786 676, 780 692" fill="none" stroke="#5a6f3e" stroke-width="2.6"/>
+              <g fill="#7f964e">
+                <ellipse cx="782" cy="580" rx="7.4" ry="3.2" transform="rotate(30 782 580)"/>
+                <ellipse cx="786" cy="602" rx="6" ry="2.8" transform="rotate(-20 786 602)"/>
+                <ellipse cx="780" cy="628" rx="7" ry="3" transform="rotate(24 780 628)"/>
+                <ellipse cx="784" cy="658" rx="6" ry="2.6" transform="rotate(-14 784 658)"/>
+              </g>
+              <path d="M872 590 C 866 620, 876 640, 868 664" fill="none" stroke="#637846" stroke-width="2.2"/>
+              <g fill="#8aa153"><ellipse cx="870" cy="610" rx="6" ry="2.6" transform="rotate(22 870 610)"/><ellipse cx="872" cy="634" rx="5.4" ry="2.4" transform="rotate(-18 872 634)"/></g>
+              <path d="M1046 586 C 1054 612, 1044 634, 1052 656" fill="none" stroke="#5d7242" stroke-width="2.2"/>
+              <g fill="#839a50"><ellipse cx="1050" cy="606" rx="6" ry="2.6" transform="rotate(-22 1050 606)"/><ellipse cx="1048" cy="628" rx="5.6" ry="2.4" transform="rotate(18 1048 628)"/></g>
+            </g>
+
+            <!-- light spill landing on the body -->
+            <g opacity=".55" style="mix-blend-mode:screen">
+              <path d="M1002 286 C 1026 304, 1034 332, 1028 360 C 1040 380, 1032 406, 1010 418 C 1024 394, 1020 370, 1008 354 C 1018 328, 1016 306, 1002 286 Z" fill="#ffe6b4" filter="url(#soft8)"/>
+              <path d="M1044 466 C 1084 460, 1118 478, 1132 506 C 1118 486, 1082 478, 1052 490 Z" fill="#ffe6b4" filter="url(#soft8)"/>
+            </g>
+          </g>
+
+          <!-- ============ ANCHORS FOR DEBRIS & FX ============ -->
+          <g id="robotDebrisAnchors" opacity="0">
+            <circle cx="776" cy="430" r="2"/><circle cx="844" cy="500" r="2"/><circle cx="760" cy="700" r="2"/>
+            <circle cx="1112" cy="600" r="2"/><circle cx="1128" cy="480" r="2"/><circle cx="980" cy="450" r="2"/>
+            <circle cx="912" cy="700" r="2"/><circle cx="1038" cy="690" r="2"/><circle cx="716" cy="580" r="2"/>
+            <circle cx="1168" cy="540" r="2"/><circle cx="952" cy="520" r="2"/><circle cx="806" cy="660" r="2"/>
+          </g>
+
+          <!-- moss / leaf speckles, vines and flowers get produced by the painting script -->
+          <g id="robotMossTexture"></g>
+          <g id="robotFlowers"></g>
+          <g id="robotVinesFront"></g>
+
+          <!-- core light cast onto nearby vines / body -->
+          <g id="coreSpill" opacity="0" style="mix-blend-mode:screen">
+            <ellipse cx="952" cy="540" rx="120" ry="96" fill="url(#coreLight)" filter="url(#soft20)"/>
+            <path d="M920 520 C 912 448, 900 366, 884 296 C 906 356, 926 436, 944 514 Z" fill="#ffe9b4" opacity=".18" filter="url(#soft8)"/>
+          </g>
+          <!-- warm dawn rim on the machine's right-hand silhouette -->
+          <g opacity=".5" style="mix-blend-mode:screen">
+            <path d="M1200 470 C 1208 504, 1190 532, 1162 546" fill="none" stroke="#ffe9ba" stroke-width="3.4" stroke-linecap="round"/>
+            <path d="M1164 566 C 1168 598, 1160 620, 1168 640" fill="none" stroke="#ffe5b0" stroke-width="2.6" stroke-linecap="round"/>
+            <path d="M1180 752 C 1186 768, 1180 780, 1174 788" fill="none" stroke="#ffe9ba" stroke-width="3" stroke-linecap="round"/>
+            <path d="M840 730 C 852 744, 866 750, 884 752" fill="none" stroke="#ffedc6" stroke-width="2.6" stroke-linecap="round"/>
+            <path d="M800 414 C 812 404, 828 396, 844 394" fill="none" stroke="#ffe9ba" stroke-width="2.4" stroke-linecap="round"/>
+          </g>
+        </g>
+
+        <!-- foreground painting (procedural) -->
+        <g id="groundFront" filter="url(#leafRough)">
+          <!-- centuries of leaf-fall and root-mound gathered around the kneeling giant -->
+          <path d="M598 806 C 668 774, 790 760, 918 764 C 1052 768, 1168 786, 1244 816 C 1200 842, 1108 850, 1000 848 C 872 846, 726 842, 650 832 C 622 828, 604 818, 598 806 Z" fill="#50663f" opacity=".94"/>
+          <path d="M640 802 C 730 778, 850 770, 966 776 C 1060 780, 1148 794, 1206 812 C 1120 820, 1000 820, 904 818 C 804 816, 700 816, 640 802 Z" fill="#617948" opacity=".7"/>
+          <path d="M690 792 C 762 776, 868 772, 954 782" fill="none" stroke="#7b915a" stroke-width="2.4" opacity=".6"/>
+          <path d="M1090 800 C 1140 806, 1180 814, 1210 822" fill="none" stroke="#3d5438" stroke-width="2" opacity=".7"/>
+          <g fill="#7d9150" opacity=".9">
+            <ellipse cx="730" cy="788" rx="9" ry="3.6" transform="rotate(-14 730 788)"/>
+            <ellipse cx="770" cy="784" rx="7" ry="3" transform="rotate(16 770 784)"/>
+            <ellipse cx="1120" cy="800" rx="8" ry="3.2" transform="rotate(-20 1120 800)"/>
+            <ellipse cx="1160" cy="810" rx="7" ry="2.8" transform="rotate(14 1160 810)"/>
+          </g>
+          <g fill="#f4ecd9">
+            <circle cx="700" cy="796" r="4"/><circle cx="708" cy="790" r="3"/><circle cx="692" cy="790" r="2.6"/>
+            <circle cx="1146" cy="798" r="3.6"/><circle cx="1154" cy="792" r="2.8"/>
+            <circle cx="1200" cy="814" r="3"/>
+          </g>
+          <g fill="#e4bd68"><circle cx="700" cy="796" r="1.4"/><circle cx="1146" cy="798" r="1.3"/><circle cx="1200" cy="814" r="1.1"/></g>
+        </g>
+        <g id="rocks"></g>
+        <g id="ferns"></g>
+        <g id="wildflowers"></g>
+        <g id="fgLeaves"></g>
+        <g id="foxgloves"></g>
+
+        <!-- mist & atmosphere -->
+        <g id="midMist" opacity=".8">
+          <path class="drift-slow" d="M0 636 C 200 604, 380 648, 580 626 C 780 604, 1000 646, 1210 624 C 1380 606, 1500 632, 1600 616 L1600 700 C 1400 714, 1220 682, 1000 700 C 780 718, 560 680, 340 700 C 190 714, 80 696, 0 706 Z" fill="url(#mistGrad)" filter="url(#soft8)"/>
+        </g>
+        <g id="frontMist">
+          <path class="drift-slower" d="M-40 736 C 180 710, 400 748, 640 728 C 900 706, 1120 746, 1360 724 C 1480 714, 1560 730, 1660 720 L1660 800 C 1400 812, 1180 780, 920 796 C 660 812, 420 780, 160 796 C 40 802, -30 790, -40 790 Z" fill="url(#mistGrad)" opacity=".72" filter="url(#soft8)"/>
+          <path class="drift-slow" style="animation-delay:-16s" d="M-20 820 C 260 790, 560 826, 860 806 C 1140 788, 1400 818, 1620 798 L1620 900 L-20 900 Z" fill="#e7ecd9" opacity=".24" filter="url(#soft8)"/>
+        </g>
+
+        <g id="birds"></g>
+        <g id="motes"></g>
+        <g id="debris"></g>
+        <g id="galeLeaves"></g>
+        <g id="frontFrame">
+          <!-- far foreground framing tree, left -->
+          <g filter="url(#leafRough)">
+            <path d="M-70 915 C -26 700, 22 556, 12 418 C 4 300, 38 158, 26 -50 L 158 -50 C 148 148, 176 298, 158 438 C 146 566, 184 722, 212 915 Z" fill="#33422d" stroke="#223020" stroke-width="4"/>
+            <path d="M104 -30 C 118 160, 142 306, 128 438 C 118 564, 154 722, 178 900 L 212 915 C 184 722, 146 566, 158 438 C 176 298, 148 148, 158 -50 Z" fill="#596343" opacity=".65"/>
+            <path d="M34 -20 C 42 160, 62 292, 54 414 C 46 540, 70 700, 84 900" fill="none" stroke="#202e1e" stroke-width="12" opacity=".4"/>
+            <g fill="none" stroke-linecap="round" opacity=".5">
+              <path d="M42 60 C 66 90, 58 128, 80 156" stroke="#68714a" stroke-width="5"/>
+              <path d="M92 118 C 74 154, 88 190, 74 224" stroke="#1f2d1e" stroke-width="4"/>
+              <path d="M54 280 C 84 306, 78 342, 100 366" stroke="#6e7850" stroke-width="5"/>
+              <path d="M112 330 C 92 372, 108 406, 96 442" stroke="#26351f" stroke-width="3.4"/>
+              <path d="M46 470 C 74 500, 66 534, 88 560" stroke="#6b754c" stroke-width="5"/>
+              <path d="M118 536 C 98 574, 112 608, 100 648" stroke="#243320" stroke-width="3.6"/>
+              <path d="M40 656 C 68 686, 60 716, 82 744" stroke="#6a754b" stroke-width="4.6"/>
+              <path d="M126 716 C 106 750, 120 780, 110 810" stroke="#243220" stroke-width="3.4"/>
+            </g>
+            <g fill="#657b45" opacity=".92">
+              <path d="M20 470 C 44 448, 78 448, 96 464 C 78 486, 44 494, 20 484 Z"/>
+              <path d="M92 236 C 114 220, 142 222, 158 236 C 138 252, 112 254, 92 246 Z" opacity=".8"/>
+              <path d="M28 178 C 46 160, 72 160, 88 174 C 70 190, 44 192, 28 186 Z" opacity=".7"/>
+              <path d="M60 610 C 84 594, 114 598, 128 614 C 106 630, 78 628, 60 618 Z" opacity=".8"/>
+              <path d="M14 770 C 40 750, 74 754, 90 772 C 66 790, 34 788, 14 776 Z"/>
+            </g>
+            <g fill="#8ea158" opacity=".75">
+              <circle cx="44" cy="458" r="5"/><circle cx="62" cy="450" r="3.6"/><circle cx="82" cy="460" r="4.4"/>
+              <circle cx="106" cy="230" r="4"/><circle cx="126" cy="226" r="3"/>
+              <circle cx="40" cy="168" r="3.4"/><circle cx="56" cy="164" r="2.6"/>
+              <circle cx="78" cy="604" r="4"/><circle cx="98" cy="602" r="3.2"/>
+            </g>
+            <path d="M118 420 C 150 386, 196 366, 236 372" fill="none" stroke="#3a4630" stroke-width="9" stroke-linecap="round"/>
+            <path d="M130 436 C 164 408, 204 392, 244 396" fill="none" stroke="#606a48" stroke-width="3" opacity=".6"/>
+            <path d="M80 700 C 130 676, 184 676, 228 696 C 190 718, 132 722, 80 714 Z" fill="#4a5737" opacity=".8"/>
+            <path d="M60 840 C 110 826, 156 830, 196 848 C 160 868, 108 868, 66 856 Z" fill="#5e7046" opacity=".8"/>
+            <!-- roots -->
+            <g stroke="#3c492e" stroke-linecap="round" fill="none">
+              <path d="M150 872 C 220 884, 284 892, 330 912" stroke-width="17"/>
+              <path d="M118 890 C 170 900, 210 906, 246 918" stroke-width="12" opacity=".85"/>
+              <path d="M-20 882 C 30 888, 68 894, 104 906" stroke-width="14" opacity=".8"/>
+            </g>
+            <path d="M144 866 C 206 876, 264 888, 310 904" fill="none" stroke="#74805a" stroke-width="3" opacity=".45"/>
+            <!-- hanging vines -->
+            <g fill="none" stroke="#5d7441" stroke-width="2.2">
+              <path d="M128 190 C 136 236, 126 268, 138 306"/>
+              <path d="M96 500 C 108 540, 96 574, 108 606"/>
+              <path d="M146 632 C 154 668, 144 696, 154 726"/>
+            </g>
+            <g fill="#7e964e">
+              <ellipse cx="132" cy="220" rx="8" ry="3.4" transform="rotate(-24 132 220)"/>
+              <ellipse cx="130" cy="252" rx="7" ry="3" transform="rotate(22 130 252)"/>
+              <ellipse cx="102" cy="524" rx="7" ry="3" transform="rotate(-18 102 524)"/>
+              <ellipse cx="102" cy="560" rx="6" ry="2.6" transform="rotate(24 102 560)"/>
+              <ellipse cx="150" cy="660" rx="6.4" ry="2.8" transform="rotate(-22 150 660)"/>
+            </g>
+          </g>
+          <!-- foreground framing tree, right edge -->
+          <g filter="url(#leafRough)">
+            <path d="M1508 915 C 1490 720, 1530 566, 1512 412 C 1498 286, 1538 122, 1528 -50 L 1640 -50 L 1640 915 Z" fill="#2f402c" stroke="#203020" stroke-width="4"/>
+            <path d="M1522 -20 C 1534 130, 1518 286, 1532 412 C 1546 558, 1516 730, 1532 900" fill="none" stroke="#596643" stroke-width="16" opacity=".55"/>
+            <g fill="none" stroke="#5f6c48" stroke-width="4" opacity=".5">
+              <path d="M1544 120 C 1570 148, 1562 182, 1586 208"/>
+              <path d="M1560 350 C 1584 382, 1574 414, 1600 442"/>
+              <path d="M1548 590 C 1572 620, 1564 652, 1590 678"/>
+            </g>
+            <path d="M1530 470 C 1502 486, 1478 510, 1458 538" fill="none" stroke="#35432c" stroke-width="8" stroke-linecap="round"/>
+            <path d="M1448 536 C 1474 514, 1510 506, 1540 514 C 1510 538, 1478 548, 1448 536 Z" fill="#567040" opacity=".9"/>
+            <path d="M1496 246 C 1474 220, 1442 208, 1408 214 C 1436 240, 1468 252, 1496 246 Z" fill="#4e683c" opacity=".85"/>
+            <path d="M1498 700 C 1470 712, 1448 734, 1434 760 C 1468 756, 1494 738, 1508 716 Z" fill="#5d7441" opacity=".85"/>
+            <g fill="#8b9d58" opacity=".7">
+              <circle cx="1470" cy="522" r="4.4"/><circle cx="1450" cy="230" r="3.6"/><circle cx="1464" cy="744" r="3.8"/>
+            </g>
+          </g>
+        </g>
+        <g id="canopyOverlay"></g>
+
+        <rect x="0" y="0" width="1600" height="900" fill="url(#vignMain)" pointer-events="none"/>
+      </g>
+    </svg>
+
+    <!-- ======================= LAUNCH SCENE : toward the golden sky ======================= -->
+    <svg id="scene-launch" class="scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" role="img" aria-label="The giant ascends into a golden dawn sky above the forest.">
+      <defs>
+        <linearGradient id="lSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4c6a76"/>
+          <stop offset=".18" stop-color="#6e8b8c"/>
+          <stop offset=".38" stop-color="#b3b7a0"/>
+          <stop offset=".56" stop-color="#e8cf9f"/>
+          <stop offset=".72" stop-color="#f8d295"/>
+          <stop offset=".86" stop-color="#f6b873"/>
+          <stop offset="1" stop-color="#e7a266"/>
+        </linearGradient>
+        <radialGradient id="lSunGlow" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#fffbe9" stop-opacity=".98"/>
+          <stop offset=".2" stop-color="#fff0c4" stop-opacity=".86"/>
+          <stop offset=".48" stop-color="#ffd995" stop-opacity=".4"/>
+          <stop offset="1" stop-color="#ffc883" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="lTrail" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffeec4" stop-opacity="1"/>
+          <stop offset=".35" stop-color="#ffe0a0" stop-opacity=".82"/>
+          <stop offset=".7" stop-color="#ffd08d" stop-opacity=".42"/>
+          <stop offset="1" stop-color="#ffcb88" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="lMountain" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b5ac93"/><stop offset="1" stop-color="#8f9383"/>
+        </linearGradient>
+        <linearGradient id="lCanopy" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#435a44"/><stop offset=".65" stop-color="#2b4032"/><stop offset="1" stop-color="#1c2d24"/>
+        </linearGradient>
+        <linearGradient id="lRim" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#ffe9b8"/><stop offset="1" stop-color="#f7c983"/>
+        </linearGradient>
+        <linearGradient id="lRobotBody" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#59695b"/><stop offset=".45" stop-color="#3d5046"/><stop offset="1" stop-color="#263830"/>
+        </linearGradient>
+        <linearGradient id="lRobotPlate" x1="0" y1="0" x2="1" y2=".6">
+          <stop offset="0" stop-color="#7b8874"/><stop offset=".55" stop-color="#5b6a5c"/><stop offset="1" stop-color="#3a4b41"/>
+        </linearGradient>
+        <radialGradient id="lChest" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#fff8e4"/><stop offset=".35" stop-color="#ffe3a1"/><stop offset="1" stop-color="#f5b661" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="lThruster" cx=".5" cy=".1" r=".8">
+          <stop offset="0" stop-color="#fffdef"/><stop offset=".3" stop-color="#ffe9b0" stop-opacity=".9"/>
+          <stop offset=".7" stop-color="#ffcf83" stop-opacity=".4"/><stop offset="1" stop-color="#ffc77c" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="lSoft" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="12"/></filter>
+        <filter id="lSoftBig" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="30"/></filter>
+        <filter id="lInk" x="-8%" y="-8%" width="116%" height="116%">
+          <feTurbulence type="fractalNoise" baseFrequency=".022" numOctaves="2" seed="11" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <filter id="lLeaf" x="-20%" y="-20%" width="140%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency=".014" numOctaves="2" seed="5" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="5" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <linearGradient id="lVignette" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#122015" stop-opacity=".34"/>
+          <stop offset=".4" stop-color="#122015" stop-opacity="0"/>
+          <stop offset="1" stop-color="#0c1710" stop-opacity=".46"/>
+        </linearGradient>
+      </defs>
+
+      <rect width="1600" height="900" fill="url(#lSky)"/>
+      <!-- sun and halo -->
+      <g id="launchSun">
+        <circle cx="1030" cy="566" r="520" fill="url(#lSunGlow)" opacity=".92"/>
+        <circle cx="1030" cy="566" r="164" fill="#fff4d3" opacity=".38" filter="url(#lSoftBig)"/>
+        <circle cx="1030" cy="566" r="96" fill="#fff8e3" opacity=".85"/>
+        <circle cx="1030" cy="566" r="72" fill="#fffdf2" opacity=".9"/>
+      </g>
+      <!-- high, painted cloud bands -->
+      <g filter="url(#lSoft)" opacity=".62">
+        <path d="M-100 160 C 160 122, 360 176, 590 148 C 830 118, 1030 172, 1270 140 C 1430 120, 1530 148, 1700 126 L1700 206 C 1460 236, 1260 196, 1010 222 C 760 250, 530 202, 300 228 C 140 246, 20 220, -100 236 Z" fill="#f7ebd6" opacity=".55"/>
+        <path d="M-80 322 C 200 280, 420 342, 690 312 C 960 282, 1200 336, 1460 304 C 1560 292, 1640 302, 1700 296 L1700 342 C 1420 372, 1200 342, 920 370 C 660 396, 400 354, 160 378 C 60 388, -10 380, -80 384 Z" fill="#fff0d7" opacity=".42"/>
+        <path d="M-60 430 C 260 402, 500 444, 780 420 C 1080 394, 1320 438, 1660 410 L1660 448 C 1320 478, 1080 442, 760 468 C 480 490, 220 456, -60 474 Z" fill="#fff6e3" opacity=".3"/>
+      </g>
+      <!-- luminous distant mountains -->
+      <g id="launchMountain">
+        <path d="M0 646 L130 586 L250 626 L360 548 L470 618 L580 572 L700 636 L820 588 L930 640 L1060 566 L1180 630 L1300 592 L1420 638 L1540 578 L1600 610 L1600 720 L0 720 Z" fill="url(#lMountain)" opacity=".55"/>
+        <path d="M0 672 C 180 640, 360 680, 560 656 C 780 630, 980 678, 1200 654 C 1360 636, 1480 662, 1600 648 L1600 726 L0 726 Z" fill="#a8ad98" opacity=".42"/>
+        <g filter="url(#lSoft)" opacity=".7">
+          <path d="M0 668 Q 240 642 480 668 T 960 656 T 1440 668 T 1600 660 L1600 700 Q 1280 716 960 700 T 320 708 Q 140 712 0 704 Z" fill="#f4ead3"/>
+        </g>
+      </g>
+
+      <!-- the forest, far below -->
+      <g id="launchForest" filter="url(#lLeaf)">
+        <path d="M-20 706 C 140 674, 300 700, 460 678 C 640 652, 800 690, 980 668 C 1160 646, 1340 688, 1620 660 L1620 900 L-20 900 Z" fill="#475c46" opacity=".72"/>
+        <path d="M-20 748 C 180 714, 380 754, 600 728 C 820 702, 1040 748, 1260 722 C 1400 706, 1520 730, 1620 718 L1620 900 L-20 900 Z" fill="url(#lCanopy)"/>
+        <!-- canopy crowns -->
+        <g fill="#3c5341">
+          <path d="M40 756 C 62 706, 118 682, 168 700 C 200 674, 258 682, 280 722 C 322 712, 358 742, 352 776 C 300 796, 200 802, 120 792 C 76 786, 48 774, 40 756 Z"/>
+          <path d="M300 792 C 316 738, 372 712, 428 730 C 460 698, 526 704, 554 748 C 610 742, 648 780, 636 816 C 570 842, 456 848, 368 830 C 326 820, 300 808, 300 792 Z"/>
+          <path d="M1030 768 C 1050 716, 1108 690, 1160 710 C 1196 680, 1264 690, 1284 732 C 1338 726, 1376 764, 1360 802 C 1288 828, 1160 830, 1080 812 C 1046 804, 1026 788, 1030 768 Z"/>
+          <path d="M1330 808 C 1344 760, 1400 736, 1450 752 C 1478 722, 1544 728, 1566 770 C 1606 772, 1632 800, 1626 826 C 1560 846, 1450 850, 1384 838 C 1350 832, 1332 822, 1330 808 Z"/>
+          <path d="M760 826 C 772 786, 820 764, 866 778 C 890 754, 944 760, 960 794 C 990 798, 1008 818, 1004 838 C 944 854, 850 858, 800 846 C 776 840, 760 834, 760 826 Z" opacity=".9"/>
+        </g>
+        <!-- backlit strands and treetops -->
+        <g stroke="#e9c98e" stroke-width="2.2" opacity=".35" fill="none">
+          <path d="M62 756 C 110 724, 162 712, 220 726 M330 784 C 386 748, 446 740, 512 760 M1058 772 C 1110 738, 1170 730, 1224 746"/>
+          <path d="M1370 800 C 1420 772, 1480 766, 1534 782 M790 826 C 832 798, 882 790, 928 804"/>
+        </g>
+        <g fill="#56704e" opacity=".8" filter="url(#lLeaf)">
+          <path d="M120 812 C 148 770, 200 758, 244 778 C 270 760, 322 772, 332 804 C 296 826, 200 834, 156 826 Z"/>
+          <path d="M470 848 C 492 812, 544 802, 584 820 C 614 804, 662 818, 672 848 C 632 866, 540 866, 502 858 Z"/>
+          <path d="M1112 838 C 1132 802, 1180 792, 1218 810 C 1246 794, 1292 806, 1302 836 C 1264 854, 1178 856, 1142 848 Z"/>
+        </g>
+      </g>
+      <!-- sea of mist in the valley -->
+      <g class="launchMist" opacity=".85">
+        <path d="M-40 700 C 220 668, 420 704, 700 680 C 980 656, 1180 700, 1460 674 C 1540 666, 1620 680, 1660 676 L1660 764 C 1380 786, 1180 748, 900 772 C 620 796, 380 756, 120 776 C 40 782, -10 776, -40 774 Z" fill="#f7efdb" opacity=".5" filter="url(#lSoft)"/>
+        <path d="M-20 774 C 280 744, 560 782, 860 762 C 1140 744, 1380 776, 1620 756 L1620 838 C 1360 854, 1120 818, 820 836 C 520 854, 260 824, -20 842 Z" fill="#f2e6cb" opacity=".3" filter="url(#lSoft)"/>
+      </g>
+
+      <!-- ===================== THE ASCENDING GIANT ===================== -->
+      <g id="launchRobotGroup">
+        <!-- thruster light behind the giant -->
+        <g id="launchThrust" style="mix-blend-mode:screen">
+          <ellipse cx="716" cy="540" rx="190" ry="120" fill="url(#lThruster)" opacity=".42" filter="url(#lSoft)"/>
+          <path d="M660 512 C 646 596, 626 662, 590 738 C 640 726, 676 686, 700 628 Z" fill="url(#lThruster)" opacity=".72" filter="url(#lSoft)"/>
+          <path d="M760 522 C 768 606, 786 674, 816 748 C 838 688, 848 620, 842 548 Z" fill="url(#lThruster)" opacity=".62" filter="url(#lSoft)"/>
+          <ellipse cx="706" cy="520" rx="58" ry="22" fill="#ffedbc" opacity=".55" filter="url(#lSoft)"/>
+        </g>
+
+        <g id="launchRobot" filter="url(#lInk)">
+          <!-- trailing legs, seen from below/behind -->
+          <g id="lLegs">
+            <path d="M690 430 C 676 470, 662 502, 636 534 C 624 550, 618 566, 620 582 L674 570 C 688 534, 704 502, 724 472 Z" fill="#33463d" stroke="#20332a" stroke-width="3.4"/>
+            <path d="M702 452 C 690 486, 674 514, 652 542" fill="none" stroke="#d9c69c" stroke-width="2.6" opacity=".45"/>
+            <path d="M628 566 C 640 550, 668 546, 684 558 C 700 570, 696 590, 678 598 C 658 606, 634 590, 628 566 Z" fill="#4b5e50" stroke="#20332a" stroke-width="3.2"/>
+            <path d="M622 590 C 640 578, 674 578, 692 594 L 700 626 C 676 638, 638 632, 620 616 Z" fill="#3b4e43" stroke="#20332a" stroke-width="3.2"/>
+            <path d="M626 610 L 686 610 M632 620 L 678 620" stroke="#7f8b76" stroke-width="2" opacity=".7"/>
+            <!-- foot thrusters -->
+            <ellipse cx="668" cy="628" rx="40" ry="15" fill="#ffedba" opacity=".9" filter="url(#lSoft)"/>
+            <path d="M650 632 C 648 662, 638 690, 622 716 C 648 704, 664 678, 672 648 Z" fill="#ffe7ae" opacity=".8" filter="url(#lSoft)"/>
+            <path d="M790 424 C 806 462, 824 492, 848 520 C 862 536, 868 552, 866 568 L 812 562 C 798 526, 782 494, 764 464 Z" fill="#3a4d43" stroke="#20332a" stroke-width="3.4"/>
+            <path d="M778 446 C 792 480, 810 508, 832 534" fill="none" stroke="#d9c69c" stroke-width="2.6" opacity=".45"/>
+            <path d="M812 556 C 830 546, 856 552, 866 570 C 876 588, 862 604, 842 604 C 820 604, 806 578, 812 556 Z" fill="#4d6052" stroke="#20332a" stroke-width="3.2"/>
+            <path d="M816 600 C 834 590, 868 594, 884 612 L 890 644 C 864 654, 828 646, 812 630 Z" fill="#3b4e43" stroke="#20332a" stroke-width="3.2"/>
+            <path d="M836 618 L 880 626" stroke="#7f8b76" stroke-width="2" opacity=".7"/>
+            <ellipse cx="848" cy="640" rx="36" ry="14" fill="#ffedba" opacity=".86" filter="url(#lSoft)"/>
+            <path d="M838 646 C 842 678, 838 704, 828 728 C 850 712, 862 684, 864 652 Z" fill="#ffe7ae" opacity=".75" filter="url(#lSoft)"/>
+          </g>
+          <!-- waist and skirt, flaring back -->
+          <g id="lHips">
+            <path d="M676 376 C 712 362, 772 362, 806 378 L 824 430 C 790 452, 692 454, 660 430 Z" fill="url(#lRobotBody)" stroke="#1f322a" stroke-width="3.8"/>
+            <path d="M666 412 C 694 426, 724 432, 744 430 L 738 478 C 710 484, 678 472, 658 452 Z" fill="url(#lRobotPlate)" stroke="#1f322a" stroke-width="3.2"/>
+            <path d="M746 432 C 774 430, 802 422, 822 410 L 838 452 C 812 474, 780 486, 742 482 Z" fill="#41544a" stroke="#1f322a" stroke-width="3.2"/>
+            <path d="M672 420 C 700 432, 724 436, 740 434 M750 434 C 776 430, 800 424, 816 414" fill="none" stroke="#e3d3aa" stroke-width="2.2" opacity=".4"/>
+            <path d="M664 442 C 668 458, 662 468, 656 480 M824 428 C 826 444, 832 454, 838 464" fill="none" stroke="#6d7d68" stroke-width="3" opacity=".8"/>
+          </g>
+          <!-- torso -->
+          <g id="lTorso">
+            <path d="M664 262 C 700 232, 782 230, 822 262 C 848 294, 842 352, 810 380 C 770 404, 710 402, 674 378 C 646 350, 640 296, 664 262 Z" fill="url(#lRobotBody)" stroke="#1e3129" stroke-width="4"/>
+            <!-- back spine and vents -->
+            <path d="M726 250 C 744 240, 764 240, 780 250 L 778 372 C 762 382, 744 382, 730 372 Z" fill="#4c5f51" stroke="#1f322a" stroke-width="2.8"/>
+            <g stroke="#23352c" stroke-width="2.8" opacity=".85">
+              <path d="M684 288 L 724 282 M682 300 L 722 294 M682 312 L 722 306"/>
+              <path d="M784 282 L 818 292 M784 294 L 820 304 M784 306 L 818 316"/>
+            </g>
+            <!-- shoulder yoke rim light -->
+            <path d="M678 258 C 712 236, 784 236, 816 262" fill="none" stroke="#ffe8b4" stroke-width="4.4" opacity=".7"/>
+            <!-- moss cape on the back -->
+            <path d="M676 276 C 700 248, 748 238, 788 250 C 810 258, 822 274, 822 292 C 794 276, 762 274, 738 290 C 714 306, 692 306, 676 296 Z" fill="#5d744a" opacity=".95"/>
+            <path d="M690 288 C 714 268, 748 262, 776 270 C 754 276, 738 288, 726 304 C 710 304, 698 298, 690 288 Z" fill="#7d9155" opacity=".8"/>
+            <path d="M706 300 C 720 330, 714 350, 724 368 C 736 350, 744 328, 744 306 Z" fill="#667d4d" opacity=".65"/>
+            <!-- core seen from behind: warm light escaping around the torso -->
+            <g style="mix-blend-mode:screen">
+              <ellipse cx="744" cy="322" rx="64" ry="54" fill="url(#lChest)" opacity=".55" filter="url(#lSoft)"/>
+              <path d="M700 300 C 712 288, 736 284, 752 292" fill="none" stroke="#ffeab8" stroke-width="3" opacity=".65"/>
+            </g>
+          </g>
+          <!-- arms, swept by the wind -->
+          <g id="lArms">
+            <!-- far arm -->
+            <path d="M802 278 C 836 284, 862 306, 876 338 C 886 362, 884 384, 872 400 L 834 376 C 826 346, 814 312, 802 278 Z" fill="#3f5247" stroke="#1f322a" stroke-width="3.4"/>
+            <path d="M836 308 C 856 326, 868 350, 870 374" fill="none" stroke="#e5d4aa" stroke-width="2.4" opacity=".45"/>
+            <path d="M840 388 C 858 380, 878 390, 882 408 C 886 426, 872 438, 854 434 C 838 430, 832 404, 840 388 Z" fill="#4a5d4f" stroke="#1f322a" stroke-width="3.2"/>
+            <path d="M862 428 C 878 424, 892 434, 894 448 L 886 466 C 870 468, 858 456, 858 444 Z" fill="#58695a" stroke="#1f322a" stroke-width="3"/>
+            <path d="M872 316 C 866 336, 862 350, 866 366" fill="none" stroke="#71836b" stroke-width="2.2" opacity=".7"/>
+            <path d="M848 396 C 860 408, 858 420, 866 428" fill="none" stroke="#7a5c42" stroke-width="3" opacity=".55"/>
+            <path d="M870 402 C 860 408, 856 418, 858 426" fill="none" stroke="#5c7b4a" stroke-width="2.4"/>
+            <g fill="#6f8a51" opacity=".8"><ellipse cx="864" cy="410" rx="7" ry="3" transform="rotate(-20 864 410)"/><ellipse cx="862" cy="422" rx="5.6" ry="2.6" transform="rotate(18 862 422)"/></g>
+            <!-- near arm -->
+            <path d="M676 280 C 646 292, 622 316, 610 348 C 602 370, 604 390, 614 404 L 652 380 C 658 350, 668 316, 676 280 Z" fill="url(#lRobotPlate)" stroke="#1f322a" stroke-width="3.4"/>
+            <path d="M640 314 C 624 334, 616 356, 618 378" fill="none" stroke="#f0debb" stroke-width="2.8" opacity=".55"/>
+            <path d="M612 392 C 628 384, 648 392, 654 410 C 658 426, 646 438, 630 436 C 614 434, 606 408, 612 392 Z" fill="#4a5d4f" stroke="#1f322a" stroke-width="3.2"/>
+            <path d="M626 432 C 644 430, 658 442, 656 456 L 642 470 C 628 468, 618 456, 618 446 Z" fill="#596a5b" stroke="#1f322a" stroke-width="3"/>
+            <path d="M626 404 C 638 414, 638 424, 644 434" fill="none" stroke="#8a6647" stroke-width="3" opacity=".5"/>
+            <path d="M610 300 C 618 314, 616 326, 620 338" fill="none" stroke="#617d4c" stroke-width="5" opacity=".8"/>
+            <path d="M600 350 C 592 372, 596 388, 590 406" fill="none" stroke="#5c7547" stroke-width="2.6"/>
+            <g fill="#7e9758"><ellipse cx="600" cy="360" rx="8" ry="3.4" transform="rotate(-24 600 360)"/><ellipse cx="596" cy="380" rx="6.6" ry="3" transform="rotate(20 596 380)"/><ellipse cx="592" cy="398" rx="6" ry="2.6" transform="rotate(-16 592 398)"/></g>
+            <g fill="#f2ecd8"><circle cx="606" cy="346" r="3.4"/><circle cx="612" cy="340" r="2.6"/></g>
+          </g>
+          <!-- shoulder pauldrons -->
+          <g id="lShoulders">
+            <path d="M664 262 C 650 226, 662 196, 694 184 C 728 172, 760 188, 766 218 C 772 246, 752 270, 724 276 C 696 282, 674 278, 664 262 Z" fill="url(#lRobotPlate)" stroke="#1e3129" stroke-width="4"/>
+            <path d="M672 236 C 682 206, 706 194, 732 200 C 754 206, 764 222, 762 240" fill="none" stroke="#ffe8b0" stroke-width="4.4" opacity=".75"/>
+            <path d="M672 248 C 690 230, 724 226, 750 240 C 760 246, 758 260, 746 268 C 722 278, 688 268, 672 248 Z" fill="#55695a" stroke="#1e3129" stroke-width="3"/>
+            <path d="M770 210 C 808 196, 848 208, 858 238 C 866 266, 848 290, 818 294 C 788 298, 766 280, 766 254 Z" fill="#526556" stroke="#1e3129" stroke-width="4"/>
+            <path d="M780 232 C 796 208, 824 200, 844 210 C 858 218, 862 234, 856 248" fill="none" stroke="#ffedc0" stroke-width="4" opacity=".7"/>
+            <path d="M780 256 C 800 242, 830 240, 850 252 C 858 258, 854 270, 842 276 C 820 282, 794 276, 780 256 Z" fill="#667a63" stroke="#1e3129" stroke-width="3"/>
+            <g fill="#a8b774" opacity=".85">
+              <circle cx="692" cy="204" r="5"/><circle cx="710" cy="196" r="3.8"/><circle cx="730" cy="200" r="4.6"/>
+              <circle cx="800" cy="216" r="4.4"/><circle cx="820" cy="208" r="3.4"/><circle cx="840" cy="216" r="4.8"/>
+            </g>
+            <path d="M674 210 C 692 188, 722 184, 744 196 C 720 198, 700 208, 690 224 C 682 222, 678 216, 674 210 Z" fill="#7d9156" opacity=".8"/>
+            <path d="M792 222 C 810 200, 838 198, 856 214 C 834 214, 816 224, 806 238 C 800 234, 796 228, 792 222 Z" fill="#71874f" opacity=".85"/>
+            <!-- painted survivor mark, faded ochre -->
+            <path d="M708 236 C 716 230, 726 230, 732 236" stroke="#d9b783" stroke-width="2" opacity=".5" fill="none"/>
+          </g>
+          <!-- head, tilted toward the canopy gap -->
+          <g id="lHead">
+            <path d="M734 146 C 748 148, 752 158, 746 168 L 724 176 C 714 172, 712 160, 718 152 Z" fill="#4a5e50" stroke="#1e3129" stroke-width="3"/>
+            <path d="M724 132 C 744 118, 772 122, 784 142 C 796 162, 788 186, 770 196 C 750 206, 724 198, 714 178 C 706 162, 710 142, 724 132 Z" fill="url(#lRobotBody)" stroke="#1e3129" stroke-width="3.8"/>
+            <path d="M732 138 C 746 128, 768 130, 778 144 C 786 156, 784 170, 776 180" fill="none" stroke="#ffe8b0" stroke-width="3.8" opacity=".8"/>
+            <path d="M744 126 C 748 102, 762 84, 782 72 C 776 94, 782 110, 794 122 C 778 130, 760 132, 744 126 Z" fill="#647767" stroke="#1e3129" stroke-width="3.2"/>
+            <path d="M752 120 C 758 100, 768 88, 780 80" fill="none" stroke="#ffe7b3" stroke-width="2.8" opacity=".6"/>
+            <path d="M716 176 C 728 170, 744 174, 750 186 C 754 198, 744 208, 730 208 C 718 208, 710 190, 716 176 Z" fill="#394c42" stroke="#1e3129" stroke-width="3"/>
+            <path d="M722 190 C 730 192, 740 190, 746 184" fill="none" stroke="#ffdfa0" stroke-width="3" opacity=".8" filter="url(#lSoft)"/>
+            <circle cx="744" cy="192" r="4" fill="#ffe3a0" opacity=".9" filter="url(#lSoft)"/>
+            <g fill="#6f8a51">
+              <path d="M728 130 c-12-2-20-12-18-22 12 0 20 8 22 18Z"/>
+              <path d="M770 132 c8-10 20-12 28-6-6 10-18 14-26 10Z"/>
+            </g>
+            <path d="M718 158 C 710 170, 714 184, 706 196" fill="none" stroke="#5c7747" stroke-width="2.4"/>
+            <g fill="#839b56"><ellipse cx="712" cy="168" rx="6.6" ry="2.8" transform="rotate(-22 712 168)"/><ellipse cx="710" cy="184" rx="5.8" ry="2.5" transform="rotate(18 710 184)"/></g>
+          </g>
+          <!-- warm rim light wrapping the machine -->
+          <g style="mix-blend-mode:screen" opacity=".85">
+            <path d="M762 246 C 792 244, 812 254, 826 272" fill="none" stroke="#ffe9ba" stroke-width="4" filter="url(#lSoft)"/>
+            <path d="M850 452 C 862 470, 862 490, 854 508" fill="none" stroke="#ffe9ba" stroke-width="4" filter="url(#lSoft)"/>
+            <path d="M662 444 C 648 464, 640 486, 636 508" fill="none" stroke="#ffe9ba" stroke-width="3.4" filter="url(#lSoft)"/>
+            <path d="M628 616 C 616 644, 610 666, 606 690" fill="none" stroke="#ffe2a6" stroke-width="4" filter="url(#lSoft)"/>
+            <path d="M862 640 C 870 666, 874 688, 874 710" fill="none" stroke="#ffe2a6" stroke-width="4" filter="url(#lSoft)"/>
+          </g>
+          <!-- loose vines and moss blown back -->
+          <g id="lVines">
+            <path d="M676 294 C 646 308, 626 330, 606 356 C 592 374, 590 392, 580 408" fill="none" stroke="#5f7949" stroke-width="2.8"/>
+            <g fill="#7e9757">
+              <ellipse cx="638" cy="318" rx="8" ry="3.4" transform="rotate(-28 638 318)"/>
+              <ellipse cx="618" cy="344" rx="6.8" ry="2.9" transform="rotate(22 618 344)"/>
+              <ellipse cx="598" cy="376" rx="7.4" ry="3.1" transform="rotate(-18 598 376)"/>
+              <ellipse cx="584" cy="400" rx="6.2" ry="2.6" transform="rotate(24 584 400)"/>
+            </g>
+            <path d="M824 308 C 856 324, 878 350, 890 380 C 898 398, 898 414, 906 428" fill="none" stroke="#5a7446" stroke-width="2.6"/>
+            <g fill="#819a59">
+              <ellipse cx="858" cy="338" rx="7.6" ry="3.2" transform="rotate(26 858 338)"/>
+              <ellipse cx="878" cy="366" rx="6.6" ry="2.8" transform="rotate(-20 878 366)"/>
+              <ellipse cx="894" cy="400" rx="6" ry="2.6" transform="rotate(18 894 400)"/>
+            </g>
+            <path d="M724 460 C 708 486, 700 508, 698 530" fill="none" stroke="#617b4a" stroke-width="2.4"/>
+            <g fill="#80994f"><ellipse cx="712" cy="486" rx="7" ry="3" transform="rotate(-24 712 486)"/><ellipse cx="704" cy="512" rx="6" ry="2.6" transform="rotate(20 704 512)"/></g>
+          </g>
+        </g>
+      </g>
+
+      <!-- the curving beam & misty trail -->
+      <g id="launchTrail">
+        <path d="M1078 862 C 1010 792, 972 704, 942 632 C 906 546, 850 492, 772 468" fill="none" stroke="#ffe9b6" stroke-width="46" opacity=".18" filter="url(#lSoftBig)"/>
+        <path d="M1084 868 C 1004 786, 966 700, 932 620 C 898 540, 846 490, 776 468" fill="none" stroke="url(#lTrail)" stroke-width="20" opacity=".5" filter="url(#lSoft)"/>
+        <path d="M1086 872 C 1006 788, 970 700, 938 622 C 902 540, 850 492, 784 472" fill="none" stroke="#fff6dd" stroke-width="3.6" opacity=".72"/>
+        <path d="M1052 838 C 986 770, 954 692, 928 622 C 894 534, 838 482, 754 454" fill="none" stroke="#fff3d2" stroke-width="1.4" opacity=".5"/>
+        <g fill="#fff3cd" opacity=".75">
+          <circle cx="1024" cy="812" r="3"/><circle cx="990" cy="764" r="2.2"/><circle cx="966" cy="716" r="2.6"/>
+          <circle cx="936" cy="660" r="2"/><circle cx="906" cy="610" r="2.8"/><circle cx="878" cy="558" r="1.8"/>
+          <circle cx="846" cy="512" r="2.4"/><circle cx="812" cy="482" r="1.6"/>
+        </g>
+      </g>
+
+      <!-- wind ribbons -->
+      <g fill="none" stroke="#ffedc8" opacity=".34" filter="url(#lSoft)">
+        <path d="M240 420 C 420 396, 610 408, 760 386" stroke-width="3"/>
+        <path d="M220 470 C 400 450, 540 462, 700 444" stroke-width="2"/>
+        <path d="M1180 410 C 1310 392, 1440 400, 1560 384" stroke-width="2.6"/>
+        <path d="M940 250 C 1090 236, 1240 244, 1390 226" stroke-width="2"/>
+      </g>
+
+      <!-- birds crossing the light -->
+      <g id="lBirds" fill="#3a4a3a" opacity=".8">
+        <g class="bird-dot"><path d="M1190 298 C 1200 290, 1208 290, 1214 296 C 1208 296, 1202 300, 1198 304 Z"/><path d="M1214 296 C 1222 288, 1230 289, 1236 294 C 1228 294, 1222 298, 1218 302 Z"/></g>
+        <g class="bird-dot" style="animation-delay:-2.3s"><path d="M1280 250 C 1288 243, 1295 243, 1300 248 C 1295 248, 1290 251, 1286 255 Z"/><path d="M1300 248 C 1307 241, 1314 242, 1319 246 C 1312 246, 1307 250, 1303 253 Z"/></g>
+        <g class="bird-dot" style="animation-delay:-4.1s"><path d="M1110 352 C 1117 345, 1124 345, 1129 350 C 1124 350, 1119 353, 1115 357 Z"/><path d="M1129 350 C 1136 343, 1143 344, 1148 348 C 1141 348, 1136 352, 1132 355 Z"/></g>
+      </g>
+
+      <!-- spiral of falling leaves caught in the sunlight -->
+      <g id="launchLeaves"></g>
+
+      <!-- foreground canopy, framing the sky -->
+      <g id="launchForeground" filter="url(#lLeaf)">
+        <path d="M-40 900 C 30 800, 80 720, 160 640 C 130 760, 140 840, 186 900 Z" fill="#243a2c"/>
+        <path d="M120 900 C 160 806, 228 742, 310 706 C 262 786, 254 848, 272 900 Z" fill="#2e4634"/>
+        <path d="M-30 900 C 60 850, 150 826, 250 820 C 180 850, 130 876, 108 900 Z" fill="#1e3327"/>
+        <g fill="#2b4231">
+          <path d="M40 760 C 80 704, 148 684, 206 704 C 242 676, 306 684, 330 724 C 378 720, 414 756, 396 792 C 330 816, 200 820, 118 804 C 68 794, 40 778, 40 760 Z"/>
+          <path d="M1280 900 C 1330 812, 1420 766, 1500 774 C 1526 736, 1594 736, 1616 776 C 1646 788, 1656 816, 1640 838 C 1570 874, 1440 890, 1360 884 Z"/>
+          <path d="M0 900 C 0 856, 40 824, 94 822 C 130 796, 186 804, 202 838 C 190 872, 160 892, 120 900 Z"/>
+        </g>
+        <g fill="#3b5339">
+          <path d="M140 760 C 180 726, 232 722, 268 744 C 296 726, 344 736, 356 764 C 314 788, 224 792, 178 780 Z"/>
+          <path d="M1430 840 C 1458 800, 1510 792, 1548 812 C 1574 794, 1616 808, 1624 838 C 1586 860, 1496 858, 1462 850 Z"/>
+        </g>
+        <g stroke="#dcb478" stroke-width="2" opacity=".42" fill="none">
+          <path d="M60 756 C 110 722, 168 708, 224 722 M1318 824 C 1372 786, 1440 778, 1502 796"/>
+        </g>
+        <g fill="#6a8250" opacity=".8">
+          <ellipse cx="86" cy="830" rx="10" ry="4" transform="rotate(-26 86 830)"/>
+          <ellipse cx="120" cy="812" rx="8" ry="3.4" transform="rotate(18 120 812)"/>
+          <ellipse cx="1520" cy="794" rx="9" ry="3.6" transform="rotate(22 1520 794)"/>
+          <ellipse cx="1560" cy="822" rx="8" ry="3.2" transform="rotate(-18 1560 822)"/>
+        </g>
+      </g>
+
+      <!-- light bloom & vignette -->
+      <g style="mix-blend-mode:screen" opacity=".7">
+        <path d="M1030 566 L 520 -20 L 610 -20 Z" fill="#fff1cd" opacity=".2" filter="url(#lSoft)"/>
+        <path d="M1030 566 L 1180 -20 L 1280 -20 Z" fill="#fff1cd" opacity=".16" filter="url(#lSoft)"/>
+        <path d="M1030 566 L 1450 700 L 1460 830 Z" fill="#ffe6b1" opacity=".18" filter="url(#lSoft)"/>
+      </g>
+      <rect width="1600" height="900" fill="url(#lVignette)" pointer-events="none"/>
+    </svg>
+  </div>
+
+  <div class="grain" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="flash" id="flash" aria-hidden="true"></div>
+  <div class="film-edge top" aria-hidden="true"></div>
+  <div class="film-edge bottom" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <path d="M20 34c0-9 4-15 13-19-1 11-6 16-13 19Z" stroke="#eec488" stroke-width="1.2"/>
+        <path d="M20 34C20 24 15 17 7 14c1 11 6 17 13 20Z" stroke="#eec488" stroke-width="1.2" opacity=".7"/>
+        <path d="M20 34V19" stroke="#eec488" stroke-width="1.1"/>
+      </svg>
+      <div>
+        <div class="word">KOMOREBI</div>
+        <div class="studio">STUDIO · 木漏れ日</div>
+      </div>
+    </div>
+    <div class="top-meta">
+      <span class="kicker">A 2D Anime Short · 苔の巨人</span>
+      <button class="icon-btn" id="soundTop" aria-label="Toggle sound" title="Sound">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#f3e8cd" stroke-width="1.4"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" class="waves"/><path d="M19 6a8.5 8.5 0 0 1 0 12" class="waves"/><path d="m3 3 18 18" class="slash"/></svg>
+      </button>
+      <button class="icon-btn" id="fullscreenBtn" aria-label="Enter fullscreen" title="Fullscreen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#f3e8cd" stroke-width="1.4"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="chapter" id="chapter" aria-live="polite">
+    <div class="rule"></div>
+    <div>
+      <div class="num" id="chapterNum">I · PROLOGUE</div>
+      <div class="t" id="chapterTitle">The Sleeping Grove</div>
+      <div class="jp" id="chapterJp">眠りの森</div>
+    </div>
+  </div>
+
+  <div class="hint">space play / pause &nbsp;·&nbsp; R restart &nbsp;·&nbsp; M sound</div>
+
+  <section class="overlay" id="startScreen" aria-label="Film title card">
+    <div class="start-inner">
+      <div class="eyebrow reveal">Komorebi Studio presents</div>
+      <h1 class="title-main reveal">The <em>Moss</em> Giant</h1>
+      <div class="title-jp reveal">苔 の 巨 人</div>
+      <div class="hairline reveal"></div>
+      <p class="tagline reveal">At dawn, the abandoned forest remembers how to dream.</p>
+      <button class="play-btn" id="playBtn"><span class="tri"></span> Play the film</button>
+      <div class="start-meta">
+        <span>One act <i class="dot"></i> 58 seconds</span>
+        <span>Sound on <i class="dot"></i> 16:9</span>
+      </div>
+      <div class="start-note">An original hand-drawn anime short</div>
+    </div>
+  </section>
+
+  <section class="overlay" id="endCard" aria-label="End title">
+    <div class="end-inner">
+      <div class="eyebrow reveal">Komorebi Studio · 木漏れ日</div>
+      <h2 class="title-main reveal">The <em>Moss</em> Giant</h2>
+      <div class="title-jp reveal">苔 の 巨 人</div>
+      <p class="end-quote reveal">“Some things sleep so long, they become the land.<br>Some things wake just to say goodbye to it.”</p>
+      <div class="btn-row reveal">
+        <button class="ghost-btn" id="replayEnd">↺ &nbsp;Watch again</button>
+        <button class="ghost-btn" id="lastFrame">View the last frame</button>
+      </div>
+      <div class="credits reveal">
+        An original 2D anime short · Story, art direction &amp; animation by Komorebi Studio<br>
+        <b>Dawn light · Mist · One ancient giant</b>
+      </div>
+    </div>
+  </section>
+
+  <footer id="controls">
+    <button class="ctl" id="playPause" aria-label="Play or pause">
+      <svg class="play-tri" viewBox="0 0 12 12"><path d="M3 1.5 10 6 3 10.5Z"/></svg>
+      <svg class="pause-bars" viewBox="0 0 12 12"><rect x="2.5" y="2" width="2.4" height="8"/><rect x="7.1" y="2" width="2.4" height="8"/></svg>
+    </button>
+    <button class="ctl" id="restartBtn" aria-label="Restart film">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#f3e8cd" stroke-width="1.5"><path d="M4 10a8 8 0 1 1 2 6"/><path d="M4 5v5h5" fill="none"/></svg>
+    </button>
+    <div class="timeline" id="timeline" role="slider" aria-label="Film timeline" aria-valuemin="0" aria-valuemax="58" aria-valuenow="0" tabindex="0">
+      <div class="tl-track"></div>
+      <div class="tl-fill" id="tlFill"></div>
+      <div class="tl-head" id="tlHead"></div>
+    </div>
+    <div class="time"><b id="curTime">0:00</b> / <span id="totalTime">0:58</span></div>
+    <button class="ctl" id="audioBtn" aria-label="Toggle sound">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#f3e8cd" stroke-width="1.4"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/><path d="m3 3 18 18" class="slash"/></svg>
+    </button>
+  </footer>
+
+  <noscript><div style="position:absolute;inset:0;display:grid;place-items:center;z-index:99;background:#080b08;color:#f3e8cd;font-family:serif;text-align:center;padding:30px">This short film needs JavaScript. Please enable it to watch the forest awaken.</div></noscript>
+</div>
+
+<script>
+  /* ART + MOTION + SOUND are in the following script block. */
+  window.FILM_SHOTS = [
+    {t:0,  num:"I — PROLOGUE",       title:"The Sleeping Grove",   jp:"眠りの森",     phase:"dawn",   pose:"dawn",   label:"Sleeping Grove"},
+    {t:9,  num:"II — CLOSE",         title:"A Small Visitor",      jp:"小さな客",     phase:"close",  pose:"stir",   label:"Small Visitor"},
+    {t:17, num:"III — THE HEART",    title:"The Heart Remembers",  jp:"心の記憶",     phase:"chest",  pose:"chest",  label:"Heart"},
+    {t:24, num:"IV — THE QUAKE",     title:"The Ground Remembers", jp:"大地の目覚め", phase:"quake",  pose:"quake",  label:"Quake"},
+    {t:32, num:"V — THE RISING",     title:"The Giant Rises",      jp:"巨人、立つ",   phase:"rise",   pose:"rise",   label:"Rising"},
+    {t:40, num:"VI — IGNITION",      title:"Wings of Dawn",        jp:"暁の翼",       phase:"ignite", pose:"lift",   label:"Ignition"},
+    {t:47, num:"VII — ASCENT",       title:"Toward the Golden Sky",jp:"黄金の空へ",   phase:"launch", pose:"lift",   label:"Ascent"}
+  ];
+</script>
+<style>
+  /* ============ hand-drawn motion system ============ */
+  #robot{filter:none}
+  #robot #torso,#robot #head,#robot #armNear,#robot #armFar,#robot #hips,#robot #legNear,#robot #legFar,#robot #shoulderNear,#robot #shoulderFar{
+    transform-box:view-box; transition:transform 3.1s cubic-bezier(.42,.02,.28,1);
+  }
+  #robot #head{transform-origin:950px 402px;transform:rotate(8deg);transition-duration:2.6s;transition-timing-function:cubic-bezier(.34,.02,.3,1)}
+  #robot #torso{transform-origin:950px 700px;transform:translateY(12px)}
+  #robot #armNear{transform-origin:772px 520px;transition-delay:.12s}
+  #robot #armFar{transform-origin:1116px 520px;transition-delay:.2s}
+  body[data-pose="stir"] #robot #head{transform:rotate(4deg)}
+  body[data-pose="stir"] #robot #torso{transform:translateY(8px)}
+  body[data-pose="chest"] #robot #head{transform:rotate(1deg)}
+  body[data-pose="chest"] #robot #torso{transform:translateY(4px)}
+  body[data-pose="quake"] #robot #head{transform:rotate(-1deg)}
+  body[data-pose="quake"] #robot #torso{transform:translateY(0)}
+  body[data-pose="rise"] #robot #torso{transform:translateY(-54px) rotate(-1.2deg)}
+  body[data-pose="rise"] #robot #head{transform:rotate(-9deg) translateY(-4px)}
+  body[data-pose="rise"] #robot #armNear{transform:rotate(-13deg) translate(-6px,-14px)}
+  body[data-pose="rise"] #robot #armFar{transform:rotate(10deg) translate(8px,-10px)}
+  body[data-pose="lift"] #robot #torso{transform:translateY(-72px) rotate(-2.2deg);transition-duration:2.1s}
+  #robot{transform-box:view-box;transform-origin:950px 760px;transition:transform 2.6s cubic-bezier(.4,.02,.3,1)}
+  body[data-pose="lift"] #robot{transform:translateY(-16px)}
+  #robotShadow{transition:opacity 1.8s ease,transform 2.6s cubic-bezier(.4,.02,.3,1);transform-box:view-box;transform-origin:958px 790px}
+  body[data-pose="lift"] #robotShadow{opacity:.14;transform:scale(.9)}
+  body[data-pose="lift"] #robot #head{transform:rotate(-15deg) translateY(-8px)}
+  body[data-pose="lift"] #robot #armNear{transform:rotate(-22deg) translate(-16px,-32px)}
+  body[data-pose="lift"] #robot #armFar{transform:rotate(18deg) translate(18px,-26px)}
+  body[data-pose="lift"] #robot #hips{transform:translateY(-8px)}
+
+  /* quake */
+  body[data-phase="quake"] #frame{animation:quake 3.2s cubic-bezier(.36,.07,.19,.97) both}
+  @keyframes quake{
+    0%{transform:translate(0,0) rotate(0)}
+    7%{transform:translate(-4px,2px) rotate(-.12deg)}
+    12%{transform:translate(3px,-3px) rotate(.1deg)}
+    18%{transform:translate(-5px,1px)}
+    24%{transform:translate(4px,2px)}
+    31%{transform:translate(-3px,-2px)}
+    38%{transform:translate(5px,1px)}
+    46%{transform:translate(-4px,0)}
+    54%{transform:translate(3px,2px)}
+    63%{transform:translate(-2px,-1px)}
+    72%{transform:translate(2px,1px)}
+    84%{transform:translate(-1px,0)}
+    100%{transform:translate(0,0)}
+  }
+
+  /* eyes + heart */
+  #faceLight{opacity:0;transition:opacity 1.6s ease}
+  body[data-pose="stir"] #faceLight{opacity:.3;animation:faceWarmth 7s ease-in-out infinite alternate}
+  body[data-pose="chest"] #faceLight{opacity:.38;animation:faceWarmth 5s ease-in-out infinite alternate}
+  body[data-pose="rise"] #faceLight,body[data-pose="lift"] #faceLight{opacity:.5}
+  @keyframes faceWarmth{0%{opacity:.24;transform:translate(-2px,1px)}100%{opacity:.44;transform:translate(2px,-1px)}}
+  #eyeGlow{opacity:.2;transition:opacity .8s}
+  body[data-pose="stir"] #eyeGlow{opacity:.72;animation:eyeFlicker 4.8s steps(1) .4s infinite}
+  body[data-pose="chest"] #eyeGlow{opacity:.86;animation:eyeFlicker 3.4s steps(1) infinite}
+  body[data-pose="quake"] #eyeGlow{opacity:.92}
+  body[data-pose="rise"] #eyeGlow,body[data-pose="lift"] #eyeGlow{opacity:1;animation:eyeBlaze 2.6s ease-in-out infinite alternate}
+  @keyframes eyeFlicker{
+    0%{opacity:.16}6%{opacity:.82}9%{opacity:.28}14%{opacity:.9}22%{opacity:.72}
+    27%{opacity:1}38%{opacity:.66}44%{opacity:.94}61%{opacity:.7}66%{opacity:1}84%{opacity:.82}100%{opacity:.95}
+  }
+  @keyframes eyeBlaze{0%{opacity:.86}100%{opacity:1}}
+
+  #coreGlow,#chestAura,#coreSpill{opacity:0;transition:opacity 1.8s ease}
+  body[data-pose="dawn"] #coreGlow{opacity:.06}
+  body[data-pose="stir"] #coreGlow{opacity:.24}
+  body[data-pose="chest"] #coreGlow{opacity:.88;animation:corePulse 3.6s ease-in-out infinite}
+  body[data-pose="chest"] #chestAura{opacity:.36;animation:auraBreathe 4.6s ease-in-out infinite}
+  body[data-pose="chest"] #coreSpill{opacity:.4}
+  body[data-pose="quake"] #coreGlow{opacity:.9;animation:corePulse 2.1s ease-in-out infinite}
+  body[data-pose="quake"] #chestAura{opacity:.42}
+  body[data-pose="rise"] #coreGlow{opacity:1;animation:coreBlaze 1.5s ease-in-out infinite alternate}
+  body[data-pose="rise"] #chestAura{opacity:.72;animation:auraBreathe 2.2s ease-in-out infinite}
+  body[data-pose="rise"] #coreSpill{opacity:.7}
+  body[data-pose="lift"] #coreGlow{opacity:1;animation:coreBlaze .7s ease-in-out infinite alternate}
+  body[data-pose="lift"] #chestAura{opacity:1;animation:auraBreathe .8s ease-in-out infinite}
+  body[data-pose="lift"] #coreSpill{opacity:.9}
+  @keyframes corePulse{0%,100%{transform:scale(1);opacity:.72}42%{transform:scale(1.05);opacity:.95}61%{transform:scale(.97);opacity:.6}78%{transform:scale(1.02);opacity:.9}}
+  @keyframes coreBlaze{0%{transform:scale(.94);opacity:.84}100%{transform:scale(1.08);opacity:1}}
+  #coreGlow{transform-box:fill-box;transform-origin:center}
+  @keyframes auraBreathe{0%,100%{opacity:.3;transform:scale(.95)}50%{opacity:.8;transform:scale(1.05)}}
+  #chestAura{transform-box:fill-box;transform-origin:center}
+
+  /* thruster spill + gale */
+  #thrusterGlow{transition:opacity 1s ease}
+  body[data-pose="lift"] #thrusterGlow{opacity:1;animation:thruster 1.1s ease-in-out infinite alternate}
+  @keyframes thruster{0%{opacity:.62;transform:scaleY(.94)}100%{opacity:1;transform:scaleY(1.05)}}
+  #thrusterGlow{transform-box:fill-box;transform-origin:50% 40%}
+
+  /* vines */
+  body[data-pose="dawn"] #torsoVines,body[data-pose="stir"] #torsoVines{animation:vineSway 9s ease-in-out infinite alternate;transform-origin:940px 520px}
+  body[data-pose="rise"] #torsoVines,body[data-pose="lift"] #torsoVines{animation:vineSway 5s ease-in-out infinite alternate}
+  @keyframes vineSway{0%{transform:rotate(-.7deg)}100%{transform:rotate(.9deg)}}
+  #torsoVines{transform-box:view-box}
+
+  /* bird landing in the close-up */
+  .visitor{opacity:0}
+  body[data-pose="stir"] .visitor{animation:birdFlyIn 3.6s 1.15s cubic-bezier(.36,.72,.38,1) forwards}
+  body[data-pose="stir"] .visitor .w1,body[data-pose="stir"] .visitor .w2{animation:flap .19s steps(2) infinite;transform-box:fill-box;transform-origin:right center}
+  body[data-pose="stir"] .visitor .w2{transform-origin:left center}
+  @keyframes birdFlyIn{
+    0%{opacity:0;transform:translate(0,0) rotate(-16deg) scale(.82)}
+    8%{opacity:1}
+    34%{transform:translate(-42px,72px) rotate(6deg) scale(.9)}
+    64%{transform:translate(-104px,164px) rotate(12deg) scale(.96)}
+    84%{opacity:1;transform:translate(-128px,206px) rotate(18deg) scale(1)}
+    100%{opacity:0;transform:translate(-128px,202px) rotate(16deg) scale(.96)}
+  }
+  @keyframes flap{0%{transform:scaleY(1)}100%{transform:scaleY(.34)}}
+  #perchedBird{opacity:0}
+  body[data-pose="stir"] #perchedBird,body[data-pose="chest"] #perchedBird{opacity:1;transition:opacity .45s 4.5s;animation:perchBob 3.4s 5s ease-in-out infinite}
+  @keyframes perchBob{0%,100%{transform:translate(0,0)}45%{transform:translate(0,-1.6px)}60%{transform:translate(1px,0)}}
+  #perchedBird{transform-box:fill-box;transform-origin:50% 90%}
+
+  /* bird flock startle */
+  .scatter{opacity:0;transform-box:view-box}
+  body[data-pose="quake"] .scatter,body[data-pose="rise"] .scatter,body[data-pose="lift"] .scatter{
+    animation:birdScatter 3.4s cubic-bezier(.3,.08,.5,1) forwards;
+  }
+  body[data-pose="quake"] .scatter .w1,body[data-pose="quake"] .scatter .w2,
+  body[data-pose="rise"] .scatter .w1,body[data-pose="rise"] .scatter .w2{animation:flap .2s steps(2) infinite}
+  @keyframes birdScatter{
+    0%{opacity:0;transform:translate(0,0) scale(.9)}
+    8%{opacity:1}
+    55%{opacity:1;transform:translate(var(--bx,140px),var(--by,-120px)) scale(1)}
+    100%{opacity:0;transform:translate(calc(var(--bx,140px) * 2.2),calc(var(--by,-120px) * 2)) scale(.7)}
+  }
+  .scatter .w1,.scatter .w2,.ambientBird .w1,.ambientBird .w2{transform-box:fill-box}
+  .scatter .w1,.ambientBird .w1{transform-origin:right center}
+  .scatter .w2,.ambientBird .w2{transform-origin:left center}
+  .ambientBird{opacity:.6;animation:ambientFlight 26s linear infinite}
+  .ambientBird .w1,.ambientBird .w2{animation:flap 1.1s steps(2) infinite}
+  @keyframes ambientFlight{0%{transform:translate(-140px,30px)}100%{transform:translate(150px,-24px)}}
+
+  /* debris cascading from the giant */
+  .clumpInner{opacity:0;transform-box:view-box}
+  body[data-pose="quake"] .clumpInner{animation:dustFall 2.4s var(--d,0s) cubic-bezier(.4,.05,.9,.6) forwards}
+  body[data-pose="rise"] .clumpInner,body[data-pose="lift"] .clumpInner{
+    animation:debrisFall 3.2s var(--d,0s) cubic-bezier(.45,.06,.9,.55) forwards;
+  }
+  @keyframes dustFall{0%{opacity:0;transform:translate(0,0)}12%{opacity:.85}100%{opacity:0;transform:translate(calc(var(--dx,0px) * .4),70px) rotate(var(--rot,60deg))}}
+  @keyframes debrisFall{
+    0%{opacity:0;transform:translate(0,-6px) rotate(0)}
+    9%{opacity:1}
+    55%{opacity:.95}
+    100%{opacity:0;transform:translate(var(--dx,20px),calc(200px + var(--dy,0px))) rotate(var(--rot,120deg))}
+  }
+
+  /* gale leaves at ignition */
+  .gale{opacity:0;transform-box:view-box}
+  body[data-pose="lift"] .gale{animation:galeFlight var(--dur,4s) var(--delay,0s) cubic-bezier(.18,.6,.34,1) infinite}
+  @keyframes galeFlight{
+    0%{opacity:0;transform:translate(0,40px) rotate(0) scale(.8)}
+    12%{opacity:.95}
+    45%{opacity:.9;transform:translate(calc(var(--gx) * .6),calc(var(--gy) * .55)) rotate(200deg) scale(1)}
+    76%{opacity:.7;transform:translate(var(--gx),var(--gy)) rotate(420deg) scale(.92)}
+    100%{opacity:0;transform:translate(calc(var(--gx) * 1.16),calc(var(--gy) * 1.1)) rotate(560deg) scale(.7)}
+  }
+
+  /* motes */
+  .mote{animation:moteDrift var(--md,14s) ease-in-out var(--mdo,0s) infinite alternate;transform-box:fill-box}
+  @keyframes moteDrift{0%{transform:translate(0,0);opacity:.16}50%{opacity:.7}100%{transform:translate(var(--mx,16px),var(--my,-26px));opacity:.3}}
+
+  /* chapter titles */
+  .chapter{transition:opacity .75s ease,transform 1s cubic-bezier(.2,.7,.2,1)}
+
+  /* ---------------- launch scene motion ---------------- */
+  #launchRobotGroup{transform-box:view-box}
+  body[data-phase="launch"] #launchRobot{animation:surge 13s cubic-bezier(.18,.64,.28,1) forwards}
+  @keyframes surge{
+    0%{transform:translate(0,26px) rotate(0) scale(1)}
+    22%{transform:translate(-6px,4px) rotate(-.6deg) scale(1.008)}
+    100%{transform:translate(-26px,-34px) rotate(-1.8deg) scale(1.035)}
+  }
+  #launchRobot{transform-box:view-box;transform-origin:744px 380px;filter:none}
+  /* mobile: keep the painting cinematic and the chrome quiet */
+  @media(max-width:700px){
+    .top-meta .kicker{display:none}
+    .brand .word{letter-spacing:.32em}
+    .chapter{left:16px;bottom:106px}
+    .chapter .rule{height:42px}
+    .chapter .t{font-size:16px}
+    .chapter .jp{font-size:9px;letter-spacing:.2em}
+    .time{display:none}
+    #controls{gap:8px;padding-bottom:24px}
+    .ctl{width:30px;height:30px}
+    .title-main{font-size:clamp(46px,13vw,74px)}
+    .title-jp{letter-spacing:.5em}
+    .start-meta{gap:12px;font-size:8px}
+    .start-meta span:last-child{display:none}
+    .end-inner{padding:20px}
+    .credits{font-size:7.5px;letter-spacing:.2em}
+    .hint{display:none}
+  }
+  body[data-phase="launch"] #launchThrust{animation:thrustBreathe 1.4s ease-in-out infinite alternate}
+  @keyframes thrustBreathe{0%{opacity:.76;transform:scaleY(.97)}100%{opacity:1;transform:scaleY(1.05)}}
+  #launchThrust{transform-box:fill-box;transform-origin:50% 20%}
+  body[data-phase="launch"] #launchSun{animation:sunBreathe 8s ease-in-out infinite alternate}
+  @keyframes sunBreathe{0%{opacity:.9;transform:scale(1)}100%{opacity:1;transform:scale(1.03)}}
+  #launchSun{transform-box:fill-box;transform-origin:center}
+  #launchTrail{animation:trailFlow 5.5s ease-in-out infinite alternate}
+  @keyframes trailFlow{0%{opacity:.82}100%{opacity:1}}
+  .flyingLeaf{transform-box:view-box;opacity:.85}
+  body[data-phase="launch"] .flyingLeaf{animation:leafFall var(--dur,10s) var(--delay,0s) linear infinite}
+  @keyframes leafFall{
+    0%{transform:translate(0,0) rotate(0);opacity:0}
+    10%{opacity:.9}
+    50%{transform:translate(var(--lx,40px),calc(var(--ly,260px) * .55)) rotate(180deg)}
+    100%{transform:translate(calc(var(--lx,40px) * 1.6),var(--ly,260px)) rotate(400deg);opacity:0}
+  }
+  .bird-dot{transform-box:view-box;animation:birdDot 9s ease-in-out infinite alternate}
+  .bird-dot:nth-child(2){animation-duration:12s}
+  .bird-dot:nth-child(3){animation-duration:10.5s}
+  @keyframes birdDot{0%{transform:translate(0,0)}100%{transform:translate(22px,-12px)}}
+  .launchMist{animation:mistBreathe 14s ease-in-out infinite alternate}
+  @keyframes mistBreathe{0%{opacity:.7;transform:translateX(-8px)}100%{opacity:.95;transform:translateX(12px)}}
+  body[data-phase="launch"] #launchForeground{animation:fgSway 9s ease-in-out infinite alternate}
+  @keyframes fgSway{0%{transform:rotate(-.25deg) translateY(0)}100%{transform:rotate(.2deg) translateY(-2px)}}
+  #launchForeground{transform-box:view-box;transform-origin:50% 100%}
+
+  @media (prefers-reduced-motion: reduce){
+    body[data-phase="launch"] #launchRobot,body[data-phase="launch"] #launchThrust,.mote,.gale,.flyingLeaf,.bird-dot,.ambientBird{animation:none!important}
+  }
+</style>
+
+<script>
+(function(){
+  'use strict';
+  const NS='http://www.w3.org/2000/svg';
+  const $=id=>document.getElementById(id);
+  function mk(tag,attrs,parent){
+    const n=document.createElementNS(NS,tag);
+    if(attrs) for(const k in attrs){ if(attrs[k]!==undefined&&attrs[k]!==null) n.setAttribute(k,attrs[k]); }
+    if(parent) parent.appendChild(n);
+    return n;
+  }
+  function P(d,attrs,parent){ return mk('path',Object.assign({d},attrs||{}),parent); }
+  function C(cx,cy,r,attrs,parent){ return mk('circle',Object.assign({cx,cy,r},attrs||{}),parent); }
+  function E(cx,cy,rx,ry,attrs,parent){ return mk('ellipse',Object.assign({cx,cy,rx,ry},attrs||{}),parent); }
+  function rngFactory(seed){
+    let a=seed>>>0;
+    return function(){a=(a+0x6D2B79F5)>>>0;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};
+  }
+  const R=rngFactory(0x6D6F7373);
+  const rnd=(a,b)=>a+R()*(b-a);
+  const pick=arr=>arr[Math.floor(R()*arr.length)];
+
+  /* ---------- painterly primitives ---------- */
+  function blob(cx,cy,rx,ry,pts,jag){
+    pts=pts||13;jag=jag===undefined?.17:jag;
+    const ps=[];
+    for(let i=0;i<pts;i++){
+      const a=(i/pts)*Math.PI*2;
+      const rr=1+(R()*2-1)*jag;
+      ps.push([cx+Math.cos(a)*rx*rr,cy+Math.sin(a)*ry*rr]);
+    }
+    let d='M'+ps[0][0].toFixed(1)+' '+ps[0][1].toFixed(1);
+    for(let i=1;i<ps.length;i++){
+      const p=ps[i],q=ps[i-1],mx=(p[0]+q[0])/2,my=(p[1]+q[1])/2;
+      d+=' Q '+q[0].toFixed(1)+' '+q[1].toFixed(1)+' '+mx.toFixed(1)+' '+my.toFixed(1);
+    }
+    d+=' Z';
+    return d;
+  }
+  function daub(parent,x,y,len,rot,fill,op){
+    const d='M0 0 C '+(len*.26).toFixed(1)+' '+(-len*.46).toFixed(1)+', '+(len*.86).toFixed(1)+' '+(-len*.36).toFixed(1)+', '+len.toFixed(1)+' 0 C '+(len*.84).toFixed(1)+' '+(len*.3).toFixed(1)+', '+(len*.3).toFixed(1)+' '+(len*.4).toFixed(1)+', 0 0 Z';
+    return mk('path',{d,fill,opacity:op===undefined?.92:op,transform:'translate('+x.toFixed(1)+' '+y.toFixed(1)+') rotate('+rot.toFixed(1)+')'},parent);
+  }
+  function canopy(parent,cx,cy,rx,ry,count,palette,dark,lit,opt){
+    opt=opt||{};
+    const g=mk('g',{},parent);
+    P(blob(cx,cy,rx,ry,17,.13),{fill:dark,opacity:opt.baseOp||.94},g);
+    const mounds=Math.max(3,Math.round(count*.11));
+    for(let i=0;i<mounds;i++){
+      const a=R()*Math.PI*2,d=Math.sqrt(R());
+      P(blob(cx+Math.cos(a)*rx*d*.72,cy+Math.sin(a)*ry*d*.66,rx*rnd(.16,.4),ry*rnd(.2,.48),11,.24),{fill:pick(palette),opacity:rnd(.45,.82)},g);
+    }
+    for(let i=0;i<count;i++){
+      const a=R()*Math.PI*2,d=Math.sqrt(R());
+      const x=cx+Math.cos(a)*rx*d*.93, y=cy+Math.sin(a)*ry*d*.9;
+      const warm=y<cy-ry*.15&&x>cx; // upper-right catches the dawn
+      const len=rnd(.9,1.55)*Math.max(4,Math.min(rx,ry)*.14);
+      daub(g,x,y,len,rnd(0,360),warm&&R()<.4?lit:pick(palette),rnd(.55,.98));
+    }
+    if(opt.rim!==false){
+      const n=Math.max(4,Math.round(count*.14));
+      for(let i=0;i<n;i++){
+        const a=rnd(-1.5,.4);
+        const x=cx+Math.cos(a)*rx*rnd(.3,.92), y=cy+Math.sin(a)*ry*rnd(.2,.9);
+        daub(g,x,y,rnd(3.4,6),rnd(0,360),lit,rnd(.4,.8));
+      }
+    }
+    return g;
+  }
+  function grass(parent,x,y,scale,color,count){
+    const g=mk('g',{},parent);
+    count=count||rnd(4,8);
+    for(let i=0;i<count;i++){
+      const bx=x+rnd(-9,9)*scale, by=y+rnd(-3,4);
+      const h=rnd(15,40)*scale, lean=rnd(-12,12)*scale;
+      P('M'+bx.toFixed(1)+' '+by.toFixed(1)+' Q '+(bx+lean*.4).toFixed(1)+' '+(by-h*.55).toFixed(1)+' '+(bx+lean).toFixed(1)+' '+(by-h).toFixed(1),{stroke:color,'stroke-width':(1.2+R()*1.3)*scale.toFixed(2),fill:'none','stroke-linecap':'round',opacity:rnd(.55,.95)},g);
+    }
+    return g;
+  }
+  function fern(parent,x,y,len,angle,flip,base,dark,tip){
+    const g=mk('g',{transform:'translate('+x.toFixed(1)+' '+y.toFixed(1)+') rotate('+angle.toFixed(1)+') scale('+(flip?-1:1)+' 1)'},parent);
+    const bend=len*(R()>.5?.16:-.14);
+    P('M0 0 Q '+(bend*.25).toFixed(1)+' '+(-len*.52).toFixed(1)+' '+bend.toFixed(1)+' '+(-len).toFixed(1),
+      {stroke:dark,'stroke-width':Math.max(1.5,len*.018),fill:'none','stroke-linecap':'round'},g);
+    const steps=Math.max(9,Math.round(len/8));
+    for(let i=1;i<=steps;i++){
+      const t=i/(steps+1);
+      const px=bend*t*t, py=-len*t;
+      const ll=(1-t*.72)*len*.32+5;
+      const side=i%2?1:-1;
+      const rot=side===1?(-26+t*16):(206-t*14);
+      const lg=mk('g',{transform:'translate('+px.toFixed(1)+' '+py.toFixed(1)+') rotate('+rot.toFixed(1)+')'},g);
+      const col=t>.78?(R()<.55?tip:base):(R()<.2?tip:base);
+      P('M0 0 C '+(ll*.3).toFixed(1)+' '+(-ll*.22).toFixed(1)+', '+(ll*.8).toFixed(1)+' '+(-ll*.16).toFixed(1)+', '+ll.toFixed(1)+' 0 C '+(ll*.74).toFixed(1)+' '+(ll*.16).toFixed(1)+', '+(ll*.26).toFixed(1)+' '+(ll*.18).toFixed(1)+', 0 0 Z',
+        {fill:col,opacity:rnd(.7,.98)},lg);
+      if(len>80&&i%3===0)P('M2 0 L '+(ll*.72).toFixed(1)+' 0',{stroke:dark,'stroke-width':.8,opacity:.4,fill:'none'},lg);
+    }
+    // curled tips
+    P('M '+bend+' '+(-len)+' q '+rnd(-14,14)+' '+rnd(-16,-6)+' '+rnd(-18,18)+' '+rnd(-4,6),{stroke:base,'stroke-width':2,fill:'none','stroke-linecap':'round'},g);
+    return g;
+  }
+  function flower(parent,x,y,s,petal,center,op){
+    const g=mk('g',{transform:'translate('+x.toFixed(1)+' '+y.toFixed(1)+') scale('+s.toFixed(2)+')',opacity:op===undefined?1:op},parent);
+    const sway=rnd(-14,14);
+    P('M0 0 Q '+(sway*.3).toFixed(1)+' '+(-y>0?-8:8)+' '+sway.toFixed(1)+' '+(-16).toFixed(1),{stroke:'#5f7744','stroke-width':1.3,fill:'none','stroke-linecap':'round'},g);
+    P('M0 -6 q -7 -3 -8 -9 q 7 1 8 7',{fill:'#748c4b'},g);
+    for(let i=0;i<5;i++){
+      const a=i*72+rnd(-8,8);
+      mk('ellipse',{cx:Math.cos(a*Math.PI/180)*3.1,cy:Math.sin(a*Math.PI/180)*3.1-16,rx:2.7,ry:2,fill:petal,opacity:.96,transform:'rotate('+a.toFixed(1)+' '+(Math.cos(a*Math.PI/180)*3.1).toFixed(2)+' '+(Math.sin(a*Math.PI/180)*3.1-16).toFixed(2)+')'},g);
+    }
+    C(sway?sway*.4:0,-16,1.5,{fill:center},g);
+    return g;
+  }
+  function leafShape(parent,x,y,len,rot,fill,op){
+    return mk('path',{d:'M0 0 C '+(len*.26).toFixed(1)+' '+(-len*.42).toFixed(1)+', '+(len*.88).toFixed(1)+' '+(-len*.34).toFixed(1)+', '+len.toFixed(1)+' 0 C '+(len*.86).toFixed(1)+' '+(len*.28).toFixed(1)+', '+(len*.3).toFixed(1)+' '+(len*.38).toFixed(1)+', 0 0 Z',
+      fill,opacity:op===undefined?.9:op,transform:'translate('+x.toFixed(1)+' '+y.toFixed(1)+') rotate('+rot.toFixed(1)+')'},parent);
+  }
+  function vine(parent,d,col,leafCol,step,size){
+    const p=P(d,{fill:'none',stroke:col,'stroke-width':2.4,'stroke-linecap':'round'},parent);
+    let L=0;try{L=p.getTotalLength()}catch(e){L=0}
+    if(!L)return;
+    step=step||24;
+    for(let s=rnd(6,20);s<L;s+=step*rnd(.7,1.3)){
+      const pt=p.getPointAtLength(s);
+      const pt2=p.getPointAtLength(Math.min(L,s+4));
+      const ang=Math.atan2(pt2.y-pt.y,pt2.x-pt.x)*180/Math.PI;
+      const side=R()<.5?1:-1;
+      const g=mk('g',{transform:'translate('+pt.x.toFixed(1)+' '+pt.y.toFixed(1)+') rotate('+(ang+side*60+rnd(-18,18)).toFixed(1)+')'},parent);
+      leafShape(g,0,0,(size||8)*rnd(.7,1.25),0,leafCol,rnd(.6,.95));
+    }
+  }
+  function mossy(parent,x,y,rx,ry,n,palette){
+    const g=mk('g',{},parent);
+    for(let i=0;i<n;i++){
+      const a=R()*Math.PI*2,d=Math.sqrt(R());
+      const px=x+Math.cos(a)*rx*d, py=y+Math.sin(a)*ry*d;
+      daub(g,px,py,rnd(1.6,4.4),rnd(0,360),pick(palette),rnd(.5,.95));
+    }
+    return g;
+  }
+  function rock(parent,x,y,rx,ry,lit){
+    const g=mk('g',{},parent);
+    const pts=[];const n=8;
+    for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2;const rr=1+(R()*2-1)*.17;pts.push([x+Math.cos(a)*rx*rr,y+Math.sin(a)*ry*rr]);}
+    let d='M'+pts[0][0].toFixed(1)+' '+pts[0][1].toFixed(1);
+    for(let i=1;i<=n;i++){const a=pts[i%n],b=pts[i-1];d+=' Q '+b[0].toFixed(1)+' '+b[1].toFixed(1)+' '+((a[0]+b[0])/2).toFixed(1)+' '+((a[1]+b[1])/2).toFixed(1);}
+    P(d+' Z',{fill:'#657259',stroke:'#37452f','stroke-width':2.2},g);
+    P(blob(x-rx*.16,y-ry*.3,rx*.7,ry*.5,9,.2),{fill:lit,opacity:.45},g);
+    P(blob(x-rx*.1,y-ry*.52,rx*.55,ry*.3,9,.26),{fill:'#7f8f5c',opacity:.8},g);
+    P('M'+(x-rx*.4)+' '+(y+ry*.1)+' q '+(rx*.3)+' '+(ry*.22)+' '+(rx*.7)+' '+(ry*.05),{stroke:'#414f38','stroke-width':1.6,fill:'none',opacity:.7},g);
+    return g;
+  }
+
+  /* ---------- assemble the forest ---------- */
+  const farPal=['#8b9b84','#7e917b','#94a289','#788c7a'];
+  const midPal=['#5a754f','#68815a','#4d6847','#73895b'];
+  const deepPal=['#334b39','#3e5640','#2b422f','#4a6141'];
+  const edgePal=['#314a37','#3c563c','#29412f','#45604a'];
+
+  const far=$('farCanopy'); far.setAttribute('filter','url(#leafRough)');
+  for(let x=-40;x<1660;x+=142){
+    canopy(far,x+rnd(-24,24),520+rnd(-26,26),rnd(84,128),rnd(38,58),42,farPal,'#657c6c','#b3bfa3',{rim:true});
+  }
+  const farTrunks=$('farTrunks');
+  for(let i=0;i<19;i++){
+    const x=rnd(-20,1620),h=rnd(52,96),w=rnd(3,7);
+    P('M'+(x-w)+' '+(600)+' L '+(x-w*.65)+' '+(600-h)+' L '+(x+w*.6)+' '+(600-h)+' L '+(x+w)+' 600 Z',{fill:'#66796a',opacity:.55},farTrunks);
+    canopy(farTrunks,x,600-h-8,rnd(22,42),rnd(12,24),16,farPal,'#6c8272','#b7c2a4',{rim:false,baseOp:.5});
+  }
+
+  const mid=$('midCanopy'); mid.setAttribute('filter','url(#leafRough)');
+  canopy(mid,140,330,190,128,86,midPal,'#3c543c','#92a167');
+  canopy(mid,430,262,170,104,74,midPal,'#3a523a','#8fa061');
+  canopy(mid,700,212,150,84,60,midPal,'#40573f','#a1ad70');
+  canopy(mid,980,198,164,88,66,midPal,'#3a523a','#8d9e61');
+  canopy(mid,1250,290,184,112,82,midPal,'#3c543c','#94a367');
+  canopy(mid,1510,350,172,118,76,midPal,'#3a5139','#8f9f60');
+  canopy(mid,880,392,160,72,52,['#4b6546','#56704d','#425c3f'],'#364d38','#7e9258',{rim:false});
+  // bush line behind the giant
+  for(let x=560;x<1240;x+=105){
+    canopy(mid,x+rnd(-16,16),456+rnd(-12,12),rnd(62,92),rnd(28,44),26,['#506a48','#5a734e','#476240'],'#374e38','#7f925c',{rim:false});
+  }
+
+  const ground=$('groundFront');
+  const lowPal=['#5f7547','#6d8250','#587043','#7b8c55'];
+  for(let x=-30;x<1640;x+=118){
+    canopy(ground,x+rnd(-20,20),806+rnd(-16,18),rnd(66,106),rnd(24,40),18,lowPal,'#3f573a','#8b9c60',{rim:false,baseOp:.85});
+  }
+  // small saplings and undergrowth
+  for(let i=0;i<22;i++){
+    const x=rnd(20,1580),y=rnd(700,790);
+    if(x>690&&x<1250&&y>720) continue;
+    grass(ground,x,y,rnd(.7,1.5),pick(['#5f7645','#77894e','#4d663d']));
+    flower(ground,x+rnd(-8,8),y-2,rnd(.55,1.05),pick(['#f3ead5','#f1e2ca','#ebd0c2','#f4eee0']),'#e2b966',.95);
+  }
+  canopy(ground,110,742,150,54,34,lowPal,'#405739','#87995e',{rim:false});
+  canopy(ground,1480,752,166,60,36,lowPal,'#3f5639','#8a9b60',{rim:false});
+
+  const ferns=$('ferns');
+  const fernSpots=[[90,930,240,-8,false],[240,930,200,7,true],[1470,930,250,10,true],[1340,910,205,-9,false],[40,800,150,16,false],[1540,808,150,-14,true],[630,842,120,9,true],[1240,860,125,-7,false],[382,860,120,5,false],[1080,892,130,4,true],[520,900,150,-5,false],[1140,930,170,8,false]];
+  for(const s of fernSpots){
+    fern(ferns,s[0],s[1],s[2],s[3],s[4],'#6d864c','#415a39','#98aa62');
+    fern(ferns,s[0]+rnd(-40,40),s[1]-4,s[2]*rnd(.5,.75),s[3]+rnd(10,30),!s[4],'#617b46','#3a5235','#8fa15c');
+  }
+  for(let i=0;i<26;i++){
+    const x=rnd(0,1600), y=rnd(740,900), l=rnd(38,92);
+    if(x>850&&x<1080&&y>770) continue;
+    fern(ferns,x,y,l,rnd(-30,30),R()<.5,'#647f49','#3c5537','#92a560');
+  }
+
+  const rocks=$('rocks');
+  rock(rocks,176,808,74,30,'#7f8c63');
+  rock(rocks,74,856,48,22,'#6f7d58');
+  rock(rocks,1408,820,62,26,'#78885e');
+  rock(rocks,1522,862,58,24,'#667852');
+  rock(rocks,652,776,34,15,'#6d7b58');
+  rock(rocks,1272,792,40,17,'#677854');
+  rock(rocks,332,900,80,26,'#5e704d');
+
+  const wf=$('wildflowers');
+  for(let i=0;i<34;i++){
+    const x=rnd(20,1580), y=rnd(760,896);
+    if(x>720&&x<1200&&y>790) continue;
+    const s=rnd(.6,1.15);
+    flower(wf,x,y,s,pick(['#f5edda','#f3e5cf','#ecd3c7','#f7f1e3','#e8d7bf']),'#e4bb64',rnd(.8,1));
+    if(R()<.6) flower(wf,x+rnd(-12,12),y+rnd(-4,4),s*.8,pick(['#f2e7d1','#e9cfc6']),'#ddb35f',.9);
+  }
+  // tall foxgloves, foreground
+  const fox=$('foxgloves');
+  for(const fx of [[226,838],[246,850],[1372,846],[1350,856],[584,872]]){
+    const x=fx[0],y=fx[1],h=rnd(88,126);
+    P('M'+x+' '+y+' C '+(x-7)+' '+(y-h*.4)+' '+(x+9)+' '+(y-h*.75)+' '+(x+2)+' '+(y-h),{stroke:'#546c42','stroke-width':2.4,fill:'none'},fox);
+    for(let k=0;k<7;k++){
+      const t=.42+k*.075;const px=x+Math.sin(t*7)*5, py=y-h*t;
+      mk('ellipse',{cx:px,cy:py,rx:4.2,ry:6.2,fill:k%2?'#e7c4c2':'#edd3cd',opacity:.92,transform:'rotate('+(k%2?-18:18)+' '+px+' '+py+')'},fox);
+    }
+    leafShape(fox,x-2,y-h*.3,22,-120,'#6b8350',.85);
+    leafShape(fox,x+2,y-h*.5,18,-60,'#5f7a48',.85);
+  }
+
+  const canopyFront=$('canopyOverlay'); canopyFront.setAttribute('filter','url(#leafRough)');
+  canopy(canopyFront,60,20,260,168,96,edgePal,'#223827','#6d8249');
+  canopy(canopyFront,340,-30,220,140,78,edgePal,'#223827','#647a45');
+  canopy(canopyFront,1590,60,250,190,88,edgePal,'#203626','#6a8048');
+  canopy(canopyFront,1290,-50,220,150,76,edgePal,'#223827','#69804a');
+  canopy(canopyFront,720,-96,220,120,60,edgePal,'#263d2a','#6e844c',{rim:true});
+  canopy(canopyFront,1010,-120,180,100,46,edgePal,'#263d2a','#73894f',{rim:true});
+  // hanging branch across the top left, Ghibli-like
+  P('M-20 -10 C 120 30, 250 46, 360 96 C 420 122, 458 156, 470 196',{fill:'none',stroke:'#4d4530','stroke-width':11,'stroke-linecap':'round'},canopyFront);
+  P('M-20 6 C 120 44, 246 62, 352 110',{fill:'none',stroke:'#6b6044','stroke-width':3,opacity:.55},canopyFront);
+  for(let i=0;i<26;i++){
+    const t=R();const x=-20+490*t,y=-10+206*t*t;
+    leafShape(canopyFront,x,y,rnd(9,16),rnd(0,360),pick(['#3a543a','#45613d','#2e4831','#60784a']),rnd(.7,.95));
+  }
+
+  const fg=$('fgLeaves'); fg.setAttribute('filter','url(#leafRough)');
+  canopy(fg,-20,890,190,78,44,['#2c4330','#365037','#243a2a','#415c3d'],'#1b3022','#617a44',{rim:false});
+  canopy(fg,1630,900,200,86,44,['#2c4330','#365037','#243a2a','#415c3d'],'#1b3022','#5e7743',{rim:false});
+  canopy(fg,800,930,220,50,26,['#2a4230','#334d35'],'#1b3021','#566f40',{rim:false});
+
+  const frontFrame=$('frontFrame');
+  P('M-40 905 C 120 830, 250 792, 360 806 C 260 850, 190 882, 150 920 Z',{fill:'#21382a',opacity:.85},frontFrame);
+  P('M1660 900 C 1520 830, 1410 798, 1300 812 C 1390 852, 1460 884, 1500 920 Z',{fill:'#1f3628',opacity:.85},frontFrame);
+  for(let i=0;i<16;i++){
+    leafShape(frontFrame,rnd(0,260),rnd(820,900),rnd(18,34),rnd(0,360),pick(['#2c4632','#345039','#223a2b']),.9);
+    leafShape(frontFrame,rnd(1360,1600),rnd(820,900),rnd(18,34),rnd(0,360),pick(['#2c4632','#345039','#223a2b']),.9);
+  }
+
+  /* ---------- robot's borrowed garden ---------- */
+  const q=s=>document.querySelector(s);
+  const mossZones=[
+    ['#head',920,292,44,13,34],
+    ['#shoulderNear',772,440,58,22,46],
+    ['#shoulderFar',1130,446,48,18,38],
+    ['#chest',1036,508,22,18,22],
+    ['#legNear',792,704,32,22,28],
+    ['#legFar',1104,726,22,20,20],
+    ['#hips',894,690,26,12,18],
+    ['#armNear',754,682,18,14,16]
+  ];
+  for(const z of mossZones){
+    const g=q(z[0]); if(!g)continue;
+    mossy(g,z[1],z[2],z[3],z[4],z[5],['#7e9550','#93a761','#aeba78','#6b8446','#bccb8a']);
+  }
+  const robotFlowerZones=[
+    ['#shoulderNear',748,456,5],['#shoulderFar',1128,454,4],['#legNear',770,686,5],
+    ['#head',928,284,3],['#chest',1018,464,2],['#hips',896,678,3],['#armNear',760,674,2]
+  ];
+  for(const z of robotFlowerZones){
+    const g=q(z[0]); if(!g)continue;
+    for(let i=0;i<z[3];i++){
+      flower(g,z[1]+rnd(-20,20),z[2]+rnd(-8,10),rnd(.42,.72),pick(['#f5edda','#f6f0e0','#eccfc7','#f1e0cf']),'#e2ba65',rnd(.85,1));
+    }
+  }
+  // a few sunlit fallen leaves stuck on the plates
+  const leafStuck=[['#shoulderNear',800,470,10],['#chest',874,556,9],['#legFar',1118,704,10],['#head',974,300,8],['#armFar',1146,660,8]];
+  for(const l of leafStuck){
+    const g=q(l[0]); if(!g)continue; leafShape(g,l[1],l[2],l[3],rnd(0,360),'#b98b4f',.8);
+  }
+  // new vines
+  vine(q('#torsoVines'),'M768 556 C 758 592, 774 610, 762 644 C 756 664, 766 678, 760 694','#5a7040','#829a52',26,7);
+  vine(q('#torsoVines'),'M1158 488 C 1168 520, 1152 546, 1160 574','#5e7443','#839b54',22,7);
+  vine(q('#head'),'M906 298 C 894 322, 900 342, 888 360','#5e7642','#819951',18,5);
+  vine(q('#legNear'),'M788 710 C 800 736, 790 756, 798 776','#5b7240','#81984f',20,6);
+  vine(q('#hips'),'M1036 676 C 1050 696, 1042 712, 1052 728','#5c7341','#839a51',20,6);
+  vine($('robotVinesFront'),'M700 700 C 686 724, 696 746, 680 770 C 670 786, 676 800, 666 816','#586f3f','#7c9450',28,7);
+  vine($('robotVinesFront'),'M1108 748 C 1120 772, 1108 790, 1120 812','#586f3f','#7c9450',26,6);
+
+  /* ---------- atmosphere ---------- */
+  const motes=$('motes');
+  for(let i=0;i<72;i++){
+    const x=rnd(120,1480),y=rnd(180,820),r=rnd(.8,2.6);
+    const g=mk('g',{class:'mote',style:'--md:'+rnd(9,20)+'s;--mdo:'+rnd(-18,0)+'s;--mx:'+rnd(-26,26)+'px;--my:'+rnd(-42,-8)+'px'},motes);
+    C(x,y,r,{fill:R()<.7?'#fff1c9':'#e5ddba',opacity:rnd(.25,.75)},g);
+  }
+  const debris=$('debris');
+  const anchors=[];
+  for(const c of document.querySelectorAll('#robotDebrisAnchors circle,#torsoDebrisAnchors circle')){
+    anchors.push([+c.getAttribute('cx'),+c.getAttribute('cy')]);
+  }
+  anchors.push([820,470],[900,560],[968,440],[1112,540],[770,700],[1118,740],[780,500],[960,600],[1010,620],[880,600],[1136,520],[744,650]);
+  for(let i=0;i<31;i++){
+    const a=anchors[i%anchors.length];
+    const x=a[0]+rnd(-16,16),y=a[1]+rnd(-10,10);
+    const outer=mk('g',{transform:'translate('+x+' '+y+')'},debris);
+    const inner=mk('g',{class:'clumpInner',style:'--d:'+rnd(0,1.7).toFixed(2)+'s;--dx:'+rnd(-28,34).toFixed(0)+'px;--dy:'+rnd(-20,40).toFixed(0)+'px;--rot:'+rnd(-220,220).toFixed(0)+'deg'},outer);
+    P(blob(0,0,rnd(3,8),rnd(2.4,5),8,.35),{fill:pick(['#5d6f45','#7c8d55','#8a6b48','#4a5c3d']),stroke:'#4a5538','stroke-width':.8},inner);
+    if(R()<.7)E(rnd(-7,7),rnd(-3,5),rnd(1,2.4),rnd(.8,1.6),{fill:'#4c3f2c',opacity:.85},inner);
+    if(R()<.6)daub(inner,rnd(-8,8),rnd(-5,5),rnd(3,6),rnd(0,360),pick(['#a5b46b','#c39a5b','#d1a45c']),.9);
+  }
+  const gale=$('galeLeaves');
+  for(let i=0;i<52;i++){
+    const x=rnd(260,1370),y=rnd(520,800);
+    const outer=mk('g',{transform:'translate('+x+' '+y+')'},gale);
+    const inner=mk('g',{class:'gale',style:'--dur:'+rnd(3.2,7).toFixed(2)+'s;--delay:'+rnd(-6,0).toFixed(2)+'s;--gx:'+rnd(-220,340).toFixed(0)+'px;--gy:'+rnd(-540,-140).toFixed(0)+'px'},outer);
+    leafShape(inner,0,0,rnd(6,13),rnd(0,360),pick(['#a8b569','#c7a463','#e0bb78','#8fa259','#d4894d']),rnd(.7,1));
+  }
+
+  // birds: the little visitor + a startled flock + two distant gliders
+  const birds=$('birds');
+  function birdArt(g,scale,bodyCol,wingCol){
+    const root=mk('g',{transform:'scale('+scale+')'},g);
+    mk('path',{class:'w1',d:'M0 0 C -8 -7, -17 -8, -23 -2 C -15 1, -7 2, 0 0 Z',fill:wingCol},root);
+    mk('path',{class:'w2',d:'M0 0 C 8 -8, 17 -9, 23 -3 C 15 1, 7 2, 0 0 Z',fill:wingCol},root);
+    mk('ellipse',{cx:0,cy:0,rx:5.6,ry:3,fill:bodyCol},root);
+    mk('path',{d:'M4 -1 L 10 1 L 4 2.4 Z',fill:'#d9a35b'},root);
+    C(3,-1,1.1,{fill:'#2f2b21'},root);
+    return root;
+  }
+  const visitorOuter=mk('g',{transform:'translate(1246 256)'},birds);
+  const visitor=mk('g',{class:'visitor'},visitorOuter);
+  birdArt(visitor,1.28,'#f4ecd9','#dfd2b7');
+  const flockSpecs=[
+    [220,255,-190,-150],[360,196,150,-170],[1290,238,230,-150],[1440,320,200,-120],[620,232,-210,-160],[1010,262,120,-200]
+  ];
+  flockSpecs.forEach(function(f,i){
+    const out=mk('g',{transform:'translate('+f[0]+' '+f[1]+')'},birds);
+    const inr=mk('g',{class:'scatter',style:'--bx:'+f[2]+'px;--by:'+f[3]+'px;--d:'+i*.08+'s;animation-delay:'+(i*.05)+'s'},out);
+    birdArt(inr,rnd(.85,1.25),'#3e4b3b','#33402f');
+  });
+  for(let i=0;i<3;i++){
+    const out=mk('g',{transform:'translate('+rnd(300,1100)+' '+rnd(150,290)+')'},birds);
+    const inr=mk('g',{class:'ambientBird',style:'animation-delay:'+(-i*7)+'s'},out);
+    birdArt(inr,rnd(.5,.75),'#4b5947','#3d4b3a');
+  }
+
+  // launch scene leaves
+  const ll=$('launchLeaves');
+  for(let i=0;i<40;i++){
+    const out=mk('g',{transform:'translate('+rnd(140,1460)+' '+rnd(80,660)+')'},ll);
+    const inner=mk('g',{class:'flyingLeaf',style:'--dur:'+rnd(8,16).toFixed(1)+'s;--delay:'+rnd(-16,0).toFixed(1)+'s;--lx:'+rnd(-70,120).toFixed(0)+'px;--ly:'+rnd(200,420).toFixed(0)+'px'},out);
+    leafShape(inner,0,0,rnd(5,12),rnd(0,360),pick(['#d9b06a','#e8c88d','#b8945a','#9eae6b','#e5a05c']),rnd(.6,1));
+  }
+
+  document.documentElement.classList.add('painted');
+})();
+</script>
+
+<style>
+  .no-transition #robot *{transition:none!important}
+  #scene-main{will-change:contents}
+  .chapter.visible{animation:capIn 1.1s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes capIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+</style>
+<script>
+(function(){
+  'use strict';
+  const body=document.body;
+  const shots=window.FILM_SHOTS;
+  const TOTAL=58;
+  const $=id=>document.getElementById(id);
+  const main=$('scene-main'), launch=$('scene-launch');
+  const startScreen=$('startScreen'), chapter=$('chapter'), chapterNum=$('chapterNum'),
+        chapterTitle=$('chapterTitle'), chapterJp=$('chapterJp'), flash=$('flash'),
+        tlFill=$('tlFill'), tlHead=$('tlHead'), timeline=$('timeline'),
+        curTime=$('curTime'), totalTime=$('totalTime'), playBtn=$('playBtn'),
+        playPause=$('playPause'), restartBtn=$('restartBtn'), audioBtn=$('audioBtn'),
+        soundTop=$('soundTop'), replayEnd=$('replayEnd'), lastFrameBtn=$('lastFrame'),
+        endCard=$('endCard');
+
+  const VIEWS=[
+    {s:[0,0,1600,900],e:[70,55,1460,822]},
+    {s:[700,214,560,315],e:[718,230,522,294]},
+    {s:[754,402,436,245],e:[782,424,390,219]},
+    {s:[26,12,1548,870],e:[64,38,1476,830]},
+    {s:[424,142,1048,590],e:[466,86,986,555]},
+    {s:[148,116,1304,734],e:[236,112,1148,646]},
+    {s:[0,0,1600,900],e:[0,0,1600,900]}
+  ];
+
+  let time=0, started=false, playing=false, ended=false, currentShot=-1, lastTs=0, rafId=0;
+  let audio=null, soundTimers=[];
+
+  /* ---------- tiny audio engine ---------- */
+  function key(freq,type,when,dur){
+    const c=audio.ctx, o=c.createOscillator(), g=c.createGain();
+    o.type=type||'sine'; o.frequency.value=freq;
+    const t0=c.currentTime+(when||0);
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(.5,t0+.02);
+    o.connect(g).connect(audio.master); o.start(t0); o.stop(t0+(dur||1));
+    return o;
+  }
+  function tone(freq,when,dur,level,type){
+    if(!audio)return;
+    const c=audio.ctx, o=c.createOscillator(), g=c.createGain();
+    o.type=type||'sine'; o.frequency.value=freq;
+    const t0=c.currentTime+(when||0);
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(level,t0+.04);
+    g.gain.exponentialRampToValueAtTime(.0001,t0+(dur||1));
+    o.connect(g).connect(audio.master); o.start(t0); o.stop(t0+(dur||1)+.05);
+  }
+  function pad(freqs,when,dur,level,type){
+    if(!audio)return;
+    const c=audio.ctx, g=c.createGain(), t0=c.currentTime+(when||0);
+    g.gain.setValueAtTime(.0001,t0);
+    g.gain.linearRampToValueAtTime(level,t0+.9);
+    g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
+    g.connect(audio.master);
+    freqs.forEach(function(f,i){
+      const o=c.createOscillator();
+      o.type=type||'sine'; o.frequency.value=f; o.detune.value=(Math.random()*10-5);
+      const og=c.createGain(); og.gain.value=i===0?1:.6;
+      o.connect(og).connect(g); o.start(t0); o.stop(t0+dur+.1);
+    });
+  }
+  function noise(dur,when){
+    if(!audio)return null;
+    const c=audio.ctx, src=c.createBufferSource();
+    const len=Math.floor(c.sampleRate*dur), buf=c.createBuffer(1,len,c.sampleRate), d=buf.getChannelData(0);
+    let last=0;
+    for(let i=0;i<len;i++){const white=Math.random()*2-1;last=(last+.025*white)/1.025;d[i]=last*3.4;}
+    src.buffer=buf; src.loop=false;
+    src.start(c.currentTime+(when||0));
+    return src;
+  }
+  function makeAudio(){
+    if(audio)return audio;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return null;
+    const ctx=new AC();
+    const master=ctx.createGain(); master.gain.value=body.classList.contains('muted')?0.0001:.42;
+    master.connect(ctx.destination);
+    // wind bed
+    const len=Math.floor(ctx.sampleRate*4), buf=ctx.createBuffer(1,len,ctx.sampleRate), d=buf.getChannelData(0);
+    let last=0;
+    for(let i=0;i<len;i++){const w=Math.random()*2-1;last=(last+.008*w)/1.008;d[i]=last*2.6;}
+    const wind=ctx.createBufferSource(); wind.buffer=buf; wind.loop=true;
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=560; lp.Q.value=.35;
+    const wg=ctx.createGain(); wg.gain.value=.16;
+    wind.connect(lp).connect(wg).connect(master); wind.start();
+    // airy layer
+    const air=ctx.createBufferSource(); air.buffer=buf; air.loop=true;
+    const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1500; bp.Q.value=.6;
+    const ag=ctx.createGain(); ag.gain.value=.035;
+    air.connect(bp).connect(ag).connect(master); air.start();
+    // drone
+    [49,73.4,98].forEach(function(f,i){
+      const o=ctx.createOscillator(); o.type=i===2?'sine':'triangle'; o.frequency.value=f;
+      const g=ctx.createGain(); g.gain.value=.028/(i+1);
+      o.connect(g).connect(master); o.start();
+    });
+    const lfo=ctx.createOscillator(), lg=ctx.createGain();
+    lfo.frequency.value=.07; lg.gain.value=.05;
+    lfo.connect(lg); lg.connect(wg.gain); lfo.start();
+    audio={ctx,master,wind:wg,air:ag};
+    return audio;
+  }
+  function ensureAudio(){
+    const a=makeAudio();
+    if(a&&a.ctx.state==='suspended')a.ctx.resume();
+    return a;
+  }
+  function clearSounds(){
+    soundTimers.forEach(function(t){clearTimeout(t)});
+    soundTimers=[];
+  }
+  function later(fn,ms){soundTimers.push(setTimeout(fn,ms));}
+  function chirp(delay){
+    if(!audio)return;
+    later(function(){
+      if(!audio)return;
+      const c=audio.ctx;
+      [0,.22].forEach(function(off,i){
+        const t0=c.currentTime+off, o=c.createOscillator(), g=c.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(i?2350:1980,t0);
+        o.frequency.exponentialRampToValueAtTime(i?3150:2880,t0+.07);
+        g.gain.setValueAtTime(.0001,t0); g.gain.linearRampToValueAtTime(.055,t0+.02);
+        g.gain.exponentialRampToValueAtTime(.0001,t0+.18);
+        o.connect(g).connect(audio.master); o.start(t0); o.stop(t0+.22);
+      });
+    },delay);
+  }
+  function rumble(){
+    if(!audio)return;
+    const c=audio.ctx, t0=c.currentTime;
+    const o=c.createOscillator(), g=c.createGain(), f=c.createBiquadFilter();
+    o.type='sine'; o.frequency.setValueAtTime(46,t0); o.frequency.exponentialRampToValueAtTime(26,t0+2.6);
+    f.type='lowpass'; f.frequency.value=95;
+    g.gain.setValueAtTime(.0001,t0); g.gain.linearRampToValueAtTime(.28,t0+.25);
+    g.gain.exponentialRampToValueAtTime(.0001,t0+3);
+    o.connect(f).connect(g).connect(audio.master); o.start(t0); o.stop(t0+3.1);
+    const n=noise(2.2); if(n){const lp=c.createBiquadFilter(),ng=c.createGain();lp.type='lowpass';lp.frequency.value=240;ng.gain.value=.12;n.connect(lp).connect(ng).connect(audio.master);}
+  }
+  function whoosh(big){
+    if(!audio)return;
+    const c=audio.ctx, src=noise(big?3.4:2.2), t0=c.currentTime;
+    if(!src)return;
+    const bp=c.createBiquadFilter(), g=c.createGain();
+    bp.type='bandpass'; bp.Q.value=.75;
+    bp.frequency.setValueAtTime(180,t0); bp.frequency.exponentialRampToValueAtTime(big?3400:2100,t0+(big?2.6:1.4));
+    g.gain.setValueAtTime(.0001,t0); g.gain.linearRampToValueAtTime(big?.4:.22,t0+.35);
+    g.gain.exponentialRampToValueAtTime(.0001,t0+(big?3.2:2));
+    src.connect(bp).connect(g).connect(audio.master);
+    if(big){tone(98,1.4,3.4,.06,'triangle');tone(147,1.6,3.2,.04,'triangle');}
+  }
+  function creak(){
+    if(!audio)return;
+    const c=audio.ctx,t0=c.currentTime;
+    [0,.9,1.8].forEach(function(off,i){
+      const o=c.createOscillator(),g=c.createGain(),bp=c.createBiquadFilter();
+      o.type='sawtooth'; o.frequency.setValueAtTime(78+i*16,t0+off);
+      o.frequency.exponentialRampToValueAtTime(46+i*8,t0+off+.8);
+      bp.type='bandpass'; bp.frequency.value=340+i*130; bp.Q.value=5;
+      g.gain.setValueAtTime(.0001,t0+off);
+      g.gain.linearRampToValueAtTime(.075,t0+off+.12);
+      g.gain.exponentialRampToValueAtTime(.0001,t0+off+.95);
+      o.connect(bp).connect(g).connect(audio.master); o.start(t0+off); o.stop(t0+off+1);
+    });
+    const n=noise(2.6); if(n){const bp=c.createBiquadFilter(),g=c.createGain();bp.type='bandpass';bp.frequency.value=780;bp.Q.value=.9;g.gain.value=.05;n.connect(bp).connect(g).connect(audio.master);}
+  }
+  function soundPhase(phase){
+    if(!audio)return;
+    if(body.classList.contains('muted'))return;
+    switch(phase){
+      case 'dawn':
+        pad([130.81,196,261.63],0,10,.05);
+        pad([65.4,98],0,12,.035,'triangle');
+        break;
+      case 'close':
+        chirp(1300);chirp(3100);
+        pad([220,329.63,440],0,7,.022);
+        tone(880,.6,2.4,.018,'sine');
+        break;
+      case 'chest':
+        pad([174.61,261.63,349.23,523.25],0,7,.045);
+        tone(58,0,3.4,.07,'sine');
+        break;
+      case 'quake':
+        rumble();
+        break;
+      case 'rise':
+        creak();
+        pad([98,130.81,196],0,8,.04,'triangle');
+        rumble();
+        break;
+      case 'ignite':
+        whoosh(false);
+        pad([196,293.66,392,587.33],0,4.5,.045);
+        break;
+      case 'launch':
+        whoosh(true);
+        pad([130.81,196,261.63,392,523.25],.4,9,.055);
+        chirp(1600);
+        break;
+    }
+  }
+
+  /* ---------- timeline & shots ---------- */
+  function shotIndexAt(t){
+    let idx=0;
+    for(let i=0;i<shots.length;i++){ if(t>=shots[i].t) idx=i; }
+    return idx;
+  }
+  function viewForShot(i,progress){
+    const v=VIEWS[i]||VIEWS[0];
+    const p=progress;
+    const vb=v.s.map(function(a,k){ return a+(v.e[k]-a)*p; });
+    return vb;
+  }
+  function ease(p){ return p*p*(3-2*p); }
+  function updateCamera(){
+    if(currentShot>=6){return;}
+    const t0=shots[currentShot].t;
+    const t1=currentShot+1<shots.length?shots[currentShot+1].t:TOTAL;
+    const p=ease(Math.min(1,Math.max(0,(time-t0)/Math.max(.001,t1-t0))));
+    const vb=viewForShot(currentShot,p);
+    // subtle handheld drift, deliberately tiny
+    vb[0]+=Math.sin(time*.23)*2.2; vb[1]+=Math.cos(time*.19)*1.5;
+    main.setAttribute('viewBox',vb.map(function(n){return n.toFixed(1)}).join(' '));
+  }
+  function applyShot(i,opts){
+    opts=opts||{};
+    const s=shots[i];
+    if(!s)return;
+    if(opts.force){
+      body.classList.add('no-transition');
+      body.dataset.phase='dawn'; body.dataset.pose='dawn';
+      void body.offsetWidth;
+    }
+    body.dataset.phase=s.phase;
+    body.dataset.pose=s.pose;
+    chapterNum.textContent=s.num;
+    chapterTitle.textContent=s.title;
+    chapterJp.textContent=s.jp;
+    if(started && !ended){
+      chapter.classList.remove('visible');
+      void chapter.offsetWidth;
+      chapter.classList.add('visible');
+    }
+    document.querySelectorAll('.tl-mark').forEach(function(m,mi){
+      m.classList.toggle('is-current',mi===i);
+      m.style.background=mi===i?'rgba(238,196,136,.95)':'';
+    });
+    if(s.phase==='launch' && !opts.silent){
+      flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+    }
+    if(opts.force){
+      requestAnimationFrame(function(){requestAnimationFrame(function(){ body.classList.remove('no-transition'); });});
+    }
+    if(!opts.silent && playing) soundPhase(s.phase);
+  }
+  function refresh(){
+    let idx=shotIndexAt(time);
+    if(idx!==currentShot){
+      currentShot=idx;
+      applyShot(idx);
+    }
+    updateCamera();
+    const pct=Math.max(0,Math.min(1,time/TOTAL));
+    if(tlFill)tlFill.style.width=(pct*100).toFixed(2)+'%';
+    if(tlHead)tlHead.style.left=(pct*100).toFixed(2)+'%';
+    if(curTime){
+      const sec=Math.floor(time);
+      curTime.textContent=Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');
+    }
+    timeline.setAttribute('aria-valuenow',String(Math.floor(time)));
+    if(started && !ended && time>=55){
+      ended=true;
+      chapter.classList.remove('visible');
+      body.classList.add('ended');
+    }
+  }
+  function tick(ts){
+    if(!playing)return;
+    if(!lastTs)lastTs=ts;
+    const dt=Math.min(.12,Math.max(0,(ts-lastTs)/1000));
+    lastTs=ts;
+    time=Math.min(TOTAL,time+dt);
+    refresh();
+    if(time>=TOTAL){
+      setPlaying(false);
+      if(!ended){
+        ended=true;chapter.classList.remove('visible');
+        body.classList.add('ended');
+      }
+      return;
+    }
+    rafId=requestAnimationFrame(tick);
+  }
+  function setPlaying(on){
+    playing=on;
+    body.classList.toggle('playing',on);
+    playPause.setAttribute('aria-label',on?'Pause film':'Play film');
+    if(on){ lastTs=0; cancelAnimationFrame(rafId); rafId=requestAnimationFrame(tick); }
+    else { cancelAnimationFrame(rafId); lastTs=0; }
+  }
+  function startAt(seconds,force){
+    clearSounds();
+    time=Math.max(0,Math.min(TOTAL,seconds));
+    ended=false;
+    body.classList.remove('ended');
+    currentShot=shotIndexAt(time);
+    applyShot(currentShot,{force:!!force,silent:true});
+    refresh();
+    if(playing) soundPhase(shots[currentShot].phase);
+  }
+  function begin(){
+    started=true;
+    body.classList.add('started');
+    startScreen.classList.add('gone');
+    ensureAudio();
+    if(time>=TOTAL-0.05){ time=0; body.classList.remove('ended'); ended=false; }
+    currentShot=shotIndexAt(time);
+    applyShot(currentShot,{force:time<.1,silent:true});
+    refresh();
+    setPlaying(true);
+    if(audio && !body.classList.contains('muted')) soundPhase(shots[shotIndexAt(time)].phase);
+  }
+  function replay(){
+    clearSounds();
+    ended=false;
+    body.classList.remove('ended');
+    time=0; currentShot=0;
+    body.classList.add('started');
+    startScreen.classList.add('gone');
+    ensureAudio();
+    applyShot(0,{force:true,silent:true});
+    refresh();
+    setPlaying(true);
+    if(audio && !body.classList.contains('muted')) soundPhase('dawn');
+  }
+  function togglePlay(){
+    if(!started){ begin(); return; }
+    if(ended){ replay(); return; }
+    if(!playing && time>=TOTAL-.05){ time=0; currentShot=-1; applyShot(0,{force:true,silent:true}); }
+    setPlaying(!playing);
+    if(playing && audio && audio.ctx.state==='suspended') audio.ctx.resume();
+  }
+  function seekTo(seconds){
+    const wasPlaying=playing;
+    setPlaying(false);
+    startAt(seconds,true);
+    if(wasPlaying) setPlaying(true);
+  }
+  function setMuted(m){
+    body.classList.toggle('muted',m);
+    soundTop.setAttribute('aria-pressed',m?'true':'false');
+    audioBtn.setAttribute('aria-pressed',m?'true':'false');
+    if(audio){
+      audio.master.gain.cancelScheduledValues(audio.ctx.currentTime);
+      audio.master.gain.setTargetAtTime(m ? 0.0001 : (body.classList.contains('muted') ? 0.0001 : 0.42),audio.ctx.currentTime,.15);
+    }
+    if(!m && started){ ensureAudio(); }
+  }
+  function toggleMute(){ setMuted(!body.classList.contains('muted')); }
+
+  /* ---------- build UI ---------- */
+  document.querySelectorAll('#controls .ctl').forEach(function(b){b.setAttribute('aria-pressed','false')});
+  shots.forEach(function(s,i){
+    const b=document.createElement('button');
+    b.className='tl-mark'; b.type='button';
+    b.style.left=(s.t/TOTAL*100).toFixed(3)+'%';
+    b.setAttribute('aria-label','Go to chapter '+s.num+': '+s.title);
+    b.innerHTML='<span>'+s.label+'</span>';
+    b.addEventListener('click',function(e){e.stopPropagation();ensureAudio();if(!started){started=true;body.classList.add('started');startScreen.classList.add('gone');}seekTo(s.t+.05);if(!playing)setPlaying(true);});
+    timeline.appendChild(b);
+  });
+  timeline.addEventListener('click',function(e){
+    const r=timeline.getBoundingClientRect();
+    const p=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
+    if(!started){started=true;body.classList.add('started');startScreen.classList.add('gone');ensureAudio();}
+    seekTo(p*TOTAL);
+    if(!playing)setPlaying(true);
+  });
+  timeline.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();seekTo(Math.min(TOTAL,time+3));}
+    if(e.key==='ArrowLeft'){e.preventDefault();e.stopPropagation();seekTo(Math.max(0,time-3));}
+  });
+  playBtn.addEventListener('click',function(){begin();});
+  playPause.addEventListener('click',togglePlay);
+  restartBtn.addEventListener('click',function(){ensureAudio();replay();});
+  audioBtn.addEventListener('click',function(){toggleMute();ensureAudio();});
+  soundTop.addEventListener('click',function(){toggleMute();ensureAudio();});
+  const fullscreenBtn=$('fullscreenBtn');
+  if(fullscreenBtn){
+    fullscreenBtn.addEventListener('click',function(){
+      const stage=document.getElementById('stage');
+      if(!document.fullscreenElement){
+        if(stage.requestFullscreen)stage.requestFullscreen().catch(function(){});
+      } else if(document.exitFullscreen){ document.exitFullscreen(); }
+    });
+    document.addEventListener('fullscreenchange',function(){
+      fullscreenBtn.setAttribute('aria-label',document.fullscreenElement?'Exit fullscreen':'Enter fullscreen');
+    });
+  }
+  replayEnd.addEventListener('click',function(){ensureAudio();replay();});
+  lastFrameBtn.addEventListener('click',function(){
+    ensureAudio();
+    ended=false;body.classList.remove('ended');
+    setPlaying(false);
+    startAt(54.2,true);
+    body.classList.add('started');
+    startScreen.classList.add('gone');
+    chapter.classList.remove('visible');void chapter.offsetWidth;
+    chapterNum.textContent=shots[6].num;chapterTitle.textContent=shots[6].title;chapterJp.textContent=shots[6].jp;
+    chapter.classList.add('visible');
+  });
+  document.addEventListener('keydown',function(e){
+    const tag=(e.target.tagName||'').toLowerCase();
+    if(tag==='input'||tag==='textarea')return;
+    if(e.code==='Space'&&tag==='button')return;
+    if(e.code==='Space'){e.preventDefault();togglePlay();}
+    else if(e.key==='r'||e.key==='R'){ensureAudio();replay();}
+    else if(e.key==='m'||e.key==='M'){toggleMute();ensureAudio();}
+    else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+      e.preventDefault();
+      const d=e.key==='ArrowRight'?4:-4;
+      seekTo(Math.min(TOTAL-0.2,Math.max(0,time+d)));
+    }
+  });
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden && playing) setPlaying(false);
+  });
+  window.addEventListener('pagehide',clearSounds);
+
+  /* ---------- boot ---------- */
+  totalTime.textContent='0:58';
+  curTime.textContent='0:00';
+  if('ontouchstart' in window){ document.querySelector('.hint').textContent='tap to play · sound on'; }
+  currentShot=0;
+  applyShot(0,{silent:true});
+  updateCamera();
+  refresh();
+  tlFill.style.width='0%';tlHead.style.left='0%';
+  /* keep an untouched poster until the audience asks for the film */
+  if(main && main.getAttribute('viewBox')!=='0 0 1600 900'){ main.setAttribute('viewBox','0 0 1600 900'); }
+  // gently present the poster frame
+  body.dataset.phase='dawn';body.dataset.pose='dawn';
+  playPause.setAttribute('aria-label','Play film');
+  audioBtn.setAttribute('aria-pressed','false');
+  soundTop.setAttribute('aria-pressed','false');
+})();
+</script>
+
+</body>
+</html>
