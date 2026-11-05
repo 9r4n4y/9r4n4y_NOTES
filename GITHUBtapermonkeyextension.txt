@@ -1,0 +1,834 @@
+// ==UserScript==
+// @name         GitHub Repo Uploader — folders & files
+// @namespace    https://github.com/
+// @version      1.0.0
+// @description  Add files or whole folders to any GitHub repo. Drag & drop, pick from disk, create new folders, and commit everything in one go.
+// @match        https://github.com/*
+// @icon         https://github.githubassets.com/favicons/favicon.svg
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
+// @connect      api.github.com
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+  if (window.top !== window.self) return;
+
+  /* ───────────────────────── config ───────────────────────── */
+  const API = 'https://api.github.com';
+  const TOKEN_KEY = 'ghu_token';
+  const MAX_FILE_BYTES = 100 * 1024 * 1024; // GitHub blob limit
+  const CONCURRENCY = 4;
+  const MAX_ROWS = 250; // rows rendered in the file list
+  const JUNK = [/(^|\/)\.DS_Store$/i, /(^|\/)Thumbs\.db$/i, /(^|\/)desktop\.ini$/i, /(^|\/)node_modules\//];
+  const STEPS = ['Reading branch', 'Uploading files', 'Building tree', 'Creating commit', 'Updating branch'];
+  const RESERVED = new Set(['settings', 'orgs', 'marketplace', 'explore', 'notifications', 'topics', 'sponsors', 'login', 'join', 'pulls', 'issues', 'codespaces', 'features', 'pricing', 'about', 'enterprise', 'apps', 'users', 'organizations', 'collections', 'trending', 'search', 'new', 'import', 'sessions', 'security', 'contact', 'customer-stories', 'readme', 'site', 'stars', 'watching', 'account', 'dashboard', 'copilot', 'solutions', 'resources', 'team', 'models', 'mcp', 'github-copilot']);
+
+  /* ───────────────────────── tiny helpers ───────────────────────── */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const encRef = (s) => s.split('/').map(encodeURIComponent).join('/');
+  const fmt = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : b < 1073741824 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1073741824).toFixed(2)} GB`);
+  const cleanPath = (p) => (p || '').replace(/\\/g, '/').split('/').map((s) => s.trim()).filter(Boolean).join('/');
+  const validPath = (p) => !p.split('/').some((s) => s === '.' || s === '..' || s.toLowerCase() === '.git');
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const isJunk = (p) => JUNK.some((r) => r.test(p));
+
+  const h = (tag, props, ...kids) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(props || {})) {
+      if (k === 'class') el.className = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+      else if (v === true) el.setAttribute(k, '');
+      else if (v !== false && v != null) el.setAttribute(k, v);
+    }
+    for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+    return el;
+  };
+
+  const ICON_PATHS = {
+    upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>',
+    folderPlus: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M12 10.5v5M9.5 13h5"/>',
+    file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/>',
+    branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-12 7"/>',
+  };
+  const icon = (name, size = 16) => {
+    const s = h('span', { class: 'ico' });
+    s.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
+    return s;
+  };
+
+  /* ───────────────────────── state ───────────────────────── */
+  const S = {
+    open: false,
+    view: 'main', // main | token | progress | done | error
+    repo: null, // {owner, name, full}
+    branch: '',
+    defaultBranch: '',
+    path: '',
+    branches: [],
+    locKey: '',
+    locLoading: false,
+    locError: '',
+    tab: 'upload', // upload | folder
+    folder: '',
+    files: [], // [{path, file}]
+    skipJunk: true,
+    message: '',
+    mode: 'direct', // direct | new
+    newBranch: '',
+    notice: null, // {type: info|warn|err, text}
+    focus: null,
+    token: { msg: '', ok: false, busy: false },
+    progress: { i: 0, frac: 0, detail: '', note: '', total: 0 },
+    result: null,
+    error: '',
+  };
+
+  /* ───────────────────────── GitHub API ───────────────────────── */
+  let onWait = null;
+
+  function gm(method, url, body, token) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method,
+        url,
+        timeout: 180000,
+        headers: Object.assign(
+          { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+          token ? { Authorization: `Bearer ${token}` } : {},
+          body ? { 'Content-Type': 'application/json' } : {}
+        ),
+        data: body ? JSON.stringify(body) : undefined,
+        onload: (r) => {
+          let data = null;
+          try { data = JSON.parse(r.responseText); } catch (_) { /* not json */ }
+          resolve({ status: r.status, data, headers: r.responseHeaders || '' });
+        },
+        onerror: () => reject(new Error('Network error. Check your connection and try again.')),
+        ontimeout: () => reject(new Error('GitHub took too long to respond.')),
+      });
+    });
+  }
+
+  async function api(method, path, body, opts = {}) {
+    const token = GM_getValue(TOKEN_KEY, '');
+    if (!token) { const e = new Error('No token saved.'); e.status = 401; throw e; }
+    const retries = opts.retries == null ? 4 : opts.retries;
+    for (let attempt = 0; ; attempt++) {
+      const r = await gm(method, API + path, body, token);
+      if (r.status >= 200 && r.status < 300) return r.data;
+      const msg = (r.data && r.data.message) || `HTTP ${r.status}`;
+      const limited = r.status === 429 || (r.status === 403 && /rate limit|abuse|secondary/i.test(msg));
+      if (limited && attempt < retries) {
+        const ra = /retry-after:\s*(\d+)/i.exec(r.headers);
+        const secs = ra ? +ra[1] : Math.pow(2, attempt) * 4;
+        if (onWait) onWait(secs);
+        await sleep(secs * 1000);
+        continue;
+      }
+      const err = new Error(msg);
+      err.status = r.status;
+      throw err;
+    }
+  }
+
+  const friendly = (e) => {
+    if (e.status === 401) return 'GitHub rejected your token (expired or revoked). Open the key icon and add a new one.';
+    if (e.status === 403 || e.status === 404) return `${e.message}. Check that your token can write to this repo (classic token: "repo" scope; fine-grained: Contents → Read and write).`;
+    if (e.status === 422 && /already exists/i.test(e.message)) return 'A branch with that name already exists. Pick a different name.';
+    if (e.status === 422 && /fast forward/i.test(e.message)) return 'The branch changed while uploading. Try again.';
+    return e.message || 'Something went wrong.';
+  };
+
+  /* ───────────────────────── page / repo detection ───────────────────────── */
+  function parsePage() {
+    const parts = location.pathname.split('/').filter(Boolean);
+    if (parts.length < 2 || RESERVED.has(parts[0].toLowerCase())) return null;
+    if (parts.length > 2 && !['tree', 'blob'].includes(parts[2])) return null;
+    let rest = [];
+    try { rest = parts.slice(3).map(decodeURIComponent); } catch (_) { rest = parts.slice(3); }
+    return { owner: parts[0], name: parts[1], kind: parts[2] || null, rest };
+  }
+
+  async function loadLocation() {
+    const page = parsePage();
+    if (!page) { S.repo = null; return; }
+    S.locLoading = true;
+    S.locError = '';
+    S.locKey = location.pathname;
+    render();
+    try {
+      const base = `/repos/${page.owner}/${page.name}`;
+      const info = await api('GET', base);
+      let branch = info.default_branch;
+      let parts = [];
+      if (page.rest.length) {
+        // A branch can contain slashes, and git forbids "a" and "a/b" coexisting, so the first match is exact.
+        for (let i = 1; i <= page.rest.length; i++) {
+          const cand = page.rest.slice(0, i).join('/');
+          try {
+            await api('GET', `${base}/git/ref/heads/${encRef(cand)}`, null, { retries: 0 });
+            branch = cand;
+            parts = page.rest.slice(i);
+            if (page.kind === 'blob') parts.pop();
+            break;
+          } catch (e) {
+            if (e.status === 401) throw e;
+          }
+        }
+      }
+      S.repo = { owner: page.owner, name: page.name, full: info.full_name };
+      S.defaultBranch = info.default_branch;
+      S.branch = branch;
+      S.path = parts.join('/');
+      if (info.permissions && info.permissions.push === false) {
+        S.notice = { type: 'warn', text: `You don't have write access to ${info.full_name}. Fork it first, or use a token that has access.` };
+      }
+      S.locLoading = false;
+      render();
+      api('GET', `${base}/branches?per_page=100`).then((bs) => {
+        S.branches = bs.map((b) => b.name);
+        const dl = shadow.getElementById('ghu-branches');
+        if (dl) dl.replaceChildren(...S.branches.map((b) => h('option', { value: b })));
+      }).catch(() => {});
+    } catch (e) {
+      S.locLoading = false;
+      S.locError = friendly(e);
+      S.repo = null;
+      if (e.status === 401) S.view = 'token';
+      render();
+    }
+  }
+
+  /* ───────────────────────── reading files ───────────────────────── */
+  async function readEntry(entry, prefix) {
+    const out = [];
+    if (entry.isFile) {
+      const file = await new Promise((res, rej) => entry.file(res, rej));
+      out.push({ path: prefix + entry.name, file });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const child of batch) out.push(...(await readEntry(child, `${prefix}${entry.name}/`)));
+      } while (batch.length);
+    }
+    return out;
+  }
+
+  async function filesFromDrop(dt) {
+    // webkitGetAsEntry must be called synchronously during the drop event.
+    const entries = Array.from(dt.items || []).filter((i) => i.kind === 'file').map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+    if (!entries.length) return Array.from(dt.files || []).map((f) => ({ path: f.name, file: f }));
+    const all = [];
+    for (const e of entries) all.push(...(await readEntry(e, '')));
+    return all;
+  }
+
+  const filesFromInput = (fileList) => Array.from(fileList).map((f) => ({ path: f.webkitRelativePath || f.name, file: f }));
+
+  function addFiles(list) {
+    const skipped = { junk: 0, big: 0, git: 0 };
+    const map = new Map(S.files.map((f) => [f.path, f]));
+    let added = 0;
+    for (const { path, file } of list) {
+      const p = cleanPath(path);
+      if (!p) continue;
+      if (!validPath(p)) { skipped.git++; continue; }
+      if (S.skipJunk && isJunk(p)) { skipped.junk++; continue; }
+      if (file.size > MAX_FILE_BYTES) { skipped.big++; continue; }
+      if (!map.has(p)) added++;
+      map.set(p, { path: p, file });
+    }
+    S.files = Array.from(map.values()).sort((a, b) => a.path.localeCompare(b.path));
+    const notes = [];
+    if (skipped.big) notes.push(`${plural(skipped.big, 'file')} over 100 MB`);
+    if (skipped.git) notes.push(`${plural(skipped.git, 'item')} inside .git or with invalid names`);
+    if (skipped.junk) notes.push(`${plural(skipped.junk, 'junk file')}`);
+    if (notes.length) S.notice = { type: skipped.big || skipped.git ? 'warn' : 'info', text: `Skipped ${notes.join(', ')}.` };
+    else S.notice = added ? null : S.notice;
+  }
+
+  async function handleDrop(dt) {
+    const pending = filesFromDrop(dt); // starts synchronously
+    S.notice = { type: 'info', text: 'Reading files…' };
+    render();
+    try {
+      addFiles(await pending);
+    } catch (_) {
+      S.notice = { type: 'err', text: 'Could not read the dropped items.' };
+    }
+    render();
+  }
+
+  const toB64 = (file) =>
+    new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1] || '');
+      fr.onerror = () => rej(fr.error || new Error(`Could not read ${file.name}`));
+      fr.readAsDataURL(file);
+    });
+
+  async function pool(items, n, worker) {
+    let i = 0;
+    let failed = false;
+    const run = async () => {
+      while (i < items.length && !failed) {
+        const idx = i++;
+        try { await worker(items[idx], idx); } catch (e) { failed = true; throw e; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, run));
+  }
+
+  /* ───────────────────────── commit logic ───────────────────────── */
+  function targetPrefix() {
+    const parts = [];
+    const base = cleanPath(S.path);
+    if (base) parts.push(base);
+    if (S.tab === 'folder') { const f = cleanPath(S.folder); if (f) parts.push(f); }
+    return parts.join('/');
+  }
+
+  function buildItems() {
+    const prefix = targetPrefix();
+    const j = (p) => (prefix ? `${prefix}/${p}` : p);
+    if (S.tab === 'folder' && !S.files.length) return [{ path: j('.gitkeep'), file: null }];
+    return S.files.map((f) => ({ path: j(f.path), file: f.file }));
+  }
+
+  function defaultMessage() {
+    const n = S.files.length;
+    if (S.tab === 'folder') {
+      const f = cleanPath(S.folder) || 'folder';
+      return n ? `Add ${f} with ${plural(n, 'file')}` : `Create ${f} folder`;
+    }
+    if (n === 0) return 'Add files';
+    if (n === 1) return `Add ${S.files[0].path.split('/').pop()}`;
+    return `Add ${n} files`;
+  }
+
+  function validate() {
+    if (!S.repo) return { ok: false, reason: S.locLoading ? 'Detecting repository…' : S.locError || 'Open a repository first' };
+    if (!S.branch.trim()) return { ok: false, reason: 'Enter a branch name' };
+    const base = cleanPath(S.path);
+    if (base && !validPath(base)) return { ok: false, reason: 'Destination folder has a name GitHub does not allow' };
+    if (S.tab === 'folder') {
+      const f = cleanPath(S.folder);
+      if (!f) return { ok: false, reason: 'Give the new folder a name' };
+      if (!validPath(f)) return { ok: false, reason: 'That folder name is not allowed' };
+    } else if (!S.files.length) {
+      return { ok: false, reason: 'Add some files to get started' };
+    }
+    if (S.mode === 'new') {
+      const b = S.newBranch.trim();
+      if (!/^\w[\w.\-/]*$/.test(b) || /\.\.|\/\/|\/$|\.lock$/.test(b)) return { ok: false, reason: 'Enter a valid name for the new branch' };
+    }
+    return { ok: true };
+  }
+
+  function setStep(i, frac = 0, detail = '') {
+    Object.assign(S.progress, { i, frac, detail, note: '' });
+    updateProgress();
+  }
+
+  async function startCommit() {
+    if (!validate().ok) return;
+    const items = buildItems();
+    const msg = S.message.trim() || defaultMessage();
+    const { owner, name } = S.repo;
+    const base = `/repos/${owner}/${name}`;
+    const branch = S.branch.trim();
+    const mode = S.mode;
+    const newBranch = S.newBranch.trim();
+
+    S.view = 'progress';
+    S.progress = { i: 0, frac: 0, detail: '', note: '', total: items.length };
+    render();
+    onWait = (secs) => { S.progress.note = `GitHub asked us to slow down. Continuing in ${secs}s…`; updateProgress(); };
+
+    try {
+      setStep(0);
+      let ref;
+      try {
+        ref = await api('GET', `${base}/git/ref/heads/${encRef(branch)}`);
+      } catch (e) {
+        if (e.status === 404) throw new Error(`The branch "${branch}" doesn't exist in ${owner}/${name}.`);
+        if (e.status === 409) throw new Error('This repository is empty. Create a first commit on GitHub (for example a README), then try again.');
+        throw e;
+      }
+      const headSha = ref.object.sha;
+      const head = await api('GET', `${base}/git/commits/${headSha}`);
+
+      setStep(1, 0, `0 / ${items.length}`);
+      const entries = new Array(items.length);
+      let done = 0;
+      await pool(items, CONCURRENCY, async (it, idx) => {
+        const content = it.file ? await toB64(it.file) : '';
+        const blob = await api('POST', `${base}/git/blobs`, { content, encoding: 'base64' });
+        entries[idx] = { path: it.path, mode: '100644', type: 'blob', sha: blob.sha };
+        done++;
+        setStep(1, done / items.length, `${done} / ${items.length}`);
+      });
+
+      setStep(2);
+      const tree = await api('POST', `${base}/git/trees`, { base_tree: head.tree.sha, tree: entries });
+      setStep(3);
+      const commit = await api('POST', `${base}/git/commits`, { message: msg, tree: tree.sha, parents: [headSha] });
+      setStep(4);
+      let finalBranch = branch;
+      if (mode === 'new') {
+        await api('POST', `${base}/git/refs`, { ref: `refs/heads/${newBranch}`, sha: commit.sha });
+        finalBranch = newBranch;
+      } else {
+        await api('PATCH', `${base}/git/refs/heads/${encRef(branch)}`, { sha: commit.sha });
+      }
+      setStep(5);
+
+      S.result = { sha: commit.sha, branch: finalBranch, mode, count: items.length, owner, name, folder: S.tab === 'folder' && !S.files.length };
+      S.files = [];
+      S.folder = '';
+      S.message = '';
+      S.notice = null;
+      S.view = 'done';
+    } catch (e) {
+      S.error = friendly(e);
+      S.view = 'error';
+    } finally {
+      onWait = null;
+    }
+    render();
+  }
+
+  /* ───────────────────────── DOM scaffold (shadow root) ───────────────────────── */
+  const CSS = `
+:host{all:initial}
+*,*::before,*::after{box-sizing:border-box}
+.root{
+  --bg:var(--bgColor-default,#0d1117);--bg-muted:var(--bgColor-muted,#151b23);--bg-inset:var(--bgColor-inset,#010409);
+  --fg:var(--fgColor-default,#f0f6fc);--fg-muted:var(--fgColor-muted,#9198a1);
+  --border:var(--borderColor-default,#3d444d);--border-muted:var(--borderColor-muted,#2a313c);
+  --accent:var(--fgColor-accent,#4493f8);--accent-bg:var(--bgColor-accent-muted,rgba(56,139,253,.15));--accent-solid:var(--bgColor-accent-emphasis,#1f6feb);
+  --ok:var(--bgColor-success-emphasis,#238636);--ok-fg:var(--fgColor-success,#3fb950);
+  --danger:var(--fgColor-danger,#f85149);--danger-bg:var(--bgColor-danger-muted,rgba(248,81,73,.12));
+  --warn:var(--fgColor-attention,#d29922);--warn-bg:var(--bgColor-attention-muted,rgba(187,128,9,.15));
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;color:var(--fg)}
+button,input{font:inherit;color:inherit}
+.ico{display:inline-flex;flex:none}
+.muted{color:var(--fg-muted)}
+
+.fab{position:fixed;left:20px;bottom:20px;z-index:2147483000;display:none;align-items:center;gap:8px;padding:9px 16px 9px 13px;border:1px solid rgba(240,246,252,.15);border-radius:999px;background:var(--accent-solid);color:#fff;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35);transition:transform .15s}
+.fab.show{display:inline-flex}
+.fab:hover{transform:translateY(-2px)}
+.fab:focus-visible,.btn:focus-visible,.icon-btn:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.overlay{position:fixed;inset:0;z-index:2147483001;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(1,4,9,.66);backdrop-filter:blur(5px)}
+.overlay.show{display:flex}
+.modal{display:flex;flex-direction:column;width:min(720px,100%);max-height:min(92vh,880px);background:var(--bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 28px 80px rgba(0,0,0,.55);overflow:hidden;animation:pop .16s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+
+.head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border-muted)}
+.badge{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--accent-bg);color:var(--accent)}
+.titles{flex:1;min-width:0}
+.title{font-size:16px;font-weight:600;line-height:1.3}
+.sub{font-size:12px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--fg-muted);cursor:pointer}
+.icon-btn:hover{background:var(--bg-muted);color:var(--fg)}
+.icon-btn.sm{width:24px;height:24px;border-radius:6px}
+
+.body{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0;overflow:auto;padding:18px}
+.foot{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--border-muted);background:var(--bg-muted)}
+.summary{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary b{color:var(--fg);font-weight:600}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted);color:var(--fg);font-size:13px;font-weight:600;line-height:20px;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{border-color:var(--fg-muted)}
+.btn.primary{background:var(--ok);border-color:rgba(240,246,252,.1);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--danger)}
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:none}
+.link{border:0;background:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0}
+.link:hover{text-decoration:underline}
+
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.label{font-size:12px;font-weight:600;color:var(--fg-muted)}
+.hint{font-size:12px;color:var(--fg-muted)}
+.input-wrap{display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-inset);color:var(--fg-muted)}
+.input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.input-wrap input{flex:1;min-width:0;padding:7px 0;border:0;outline:0;background:transparent;color:var(--fg)}
+.input-wrap input::placeholder{color:var(--fg-muted);opacity:.7}
+.prefix{font-size:13px;white-space:nowrap;max-width:45%;overflow:hidden;text-overflow:ellipsis}
+.grid{display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr);gap:12px}
+@media (max-width:560px){.grid{grid-template-columns:1fr}}
+
+.tabs{display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--bg-muted);border:1px solid var(--border-muted)}
+.tab{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--fg-muted);font-weight:600;font-size:13px;cursor:pointer}
+.tab:hover{color:var(--fg)}
+.tab.on{background:var(--bg);border-color:var(--border);color:var(--fg)}
+
+.dropzone{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 16px;border:2px dashed var(--border);border-radius:14px;text-align:center;transition:border-color .12s,background .12s}
+.dz-icon{display:grid;place-items:center;width:52px;height:52px;margin-bottom:4px;border-radius:50%;background:var(--bg-muted);color:var(--accent);transition:transform .15s}
+.dz-title{font-size:15px;font-weight:600}
+.dz-actions{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;justify-content:center}
+.overlay.dragging .dropzone{border-color:var(--accent);background:var(--accent-bg)}
+.overlay.dragging .dz-icon{transform:translateY(-4px) scale(1.08);background:var(--accent-solid);color:#fff}
+
+.list{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.list-head{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--bg-muted);border-bottom:1px solid var(--border-muted);font-size:12px;color:var(--fg-muted)}
+.rows{max-height:200px;overflow:auto}
+.row{display:flex;align-items:center;gap:10px;padding:4px 8px 4px 12px;border-bottom:1px solid var(--border-muted);font-size:13px}
+.row:last-child{border-bottom:0}
+.row .ico{color:var(--fg-muted)}
+.row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .dir{color:var(--fg-muted)}
+.row .size{font-size:12px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.row.more{justify-content:center;color:var(--fg-muted);padding:8px}
+
+.choices{display:flex;flex-direction:column;gap:8px}
+.choice{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer}
+.choice.on{border-color:var(--accent);background:var(--accent-bg)}
+.choice input[type=radio]{margin:3px 0 0;accent-color:var(--accent-solid)}
+.choice .ct{font-weight:600}
+.choice .cs{font-size:12px;color:var(--fg-muted)}
+.choice .input-wrap{margin-top:8px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--fg-muted);cursor:pointer}
+.check input{accent-color:var(--accent-solid)}
+
+.notice{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid;border-radius:10px;font-size:13px}
+.notice .grow{flex:1;min-width:0}
+.notice.info{border-color:var(--accent);background:var(--accent-bg)}
+.notice.warn{border-color:var(--warn);background:var(--warn-bg)}
+.notice.err{border-color:var(--danger);background:var(--danger-bg)}
+
+.steps{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.step{display:flex;align-items:center;gap:12px;padding:7px 0;color:var(--fg-muted)}
+.step .dot{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex:none}
+.step .det{margin-left:auto;font-size:12px;font-variant-numeric:tabular-nums}
+.step.run{color:var(--fg);font-weight:600}
+.step.run .dot{border-color:var(--accent)}
+.step.done{color:var(--fg)}
+.step.done .dot{border-color:var(--ok);background:var(--ok);color:#fff}
+.bar{height:8px;border-radius:99px;background:var(--bg-muted);border:1px solid var(--border-muted);overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--accent-solid);transition:width .2s}
+.pct{display:flex;justify-content:space-between;font-size:12px;color:var(--fg-muted);margin-top:6px}
+.spin{width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.center{display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 8px;text-align:center}
+.big{display:grid;place-items:center;width:64px;height:64px;border-radius:50%;margin-bottom:6px}
+.big.ok{background:var(--ok);color:#fff}
+.big.err{background:var(--danger-bg);color:var(--danger)}
+.center h2{margin:0;font-size:18px}
+.center p{margin:0;max-width:46ch;color:var(--fg-muted)}
+.actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;justify-content:center}
+.explain{display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--fg-muted)}
+.explain b{color:var(--fg)}
+
+.veil{position:fixed;inset:0;z-index:2147483002;display:none;align-items:center;justify-content:center;background:rgba(1,4,9,.55);backdrop-filter:blur(4px)}
+.veil.show{display:flex}
+.veil *{pointer-events:none}
+.veil-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:44px 64px;border:3px dashed var(--accent);border-radius:24px;background:var(--bg);text-align:center}
+.veil-card .t{font-size:20px;font-weight:600}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+`;
+
+  const host = h('div', { id: 'gh-repo-uploader-host' });
+  const shadow = host.attachShadow({ mode: 'open' });
+  const root = h('div', { class: 'root' });
+  const fab = h('button', { class: 'fab', title: 'Add files or folders to this repository', onClick: () => openPanel() }, icon('upload', 16), 'Add files');
+  const overlay = h('div', { class: 'overlay' });
+  const veilText = h('div', { class: 't' }, 'Drop to add to this repository');
+  const veil = h('div', { class: 'veil' }, h('div', { class: 'veil-card' }, icon('upload', 36), veilText, h('div', { class: 'muted' }, 'Files and whole folders both work')));
+  root.append(fab, overlay, veil);
+  shadow.append(h('style', {}, CSS), root);
+  document.body.append(host);
+
+  /* ───────────────────────── view helpers ───────────────────────── */
+  const btn = (label, onClick, cls = '', ico) => h('button', { class: `btn ${cls}`.trim(), onClick }, ico && icon(ico, 14), label);
+  const field = (label, control, hint) => h('div', { class: 'field' }, h('div', { class: 'label' }, label), control, hint && h('div', { class: 'hint' }, hint));
+  const wrap = (...kids) => h('div', { class: 'input-wrap' }, ...kids);
+  const input = (props) => h('input', Object.assign({ autocomplete: 'off', spellcheck: 'false' }, props));
+
+  const header = (title, sub, extra = []) =>
+    h('div', { class: 'head' },
+      h('div', { class: 'badge' }, icon('upload', 18)),
+      h('div', { class: 'titles' }, h('div', { class: 'title' }, title), sub ? h('div', { class: 'sub' }, sub) : null),
+      extra,
+      S.view !== 'progress' ? h('button', { class: 'icon-btn', title: 'Close', onClick: closePanel }, icon('x', 16)) : null);
+
+  const refreshFoot = () => {
+    const f = shadow.querySelector('.foot[data-main]');
+    if (f) f.replaceWith(mainFooter());
+  };
+
+  /* ───────────────────────── main view ───────────────────────── */
+  function mainFooter() {
+    const v = validate();
+    const n = S.files.length;
+    const label = S.tab === 'folder' && !n ? 'Create folder' : n ? `Commit ${plural(n, 'file')}` : 'Commit';
+    const prefix = targetPrefix();
+    const where = S.repo ? `${S.repo.name}/${prefix ? prefix + '/' : ''}` : '';
+    const foot = h('div', { class: 'foot', 'data-main': true },
+      h('div', { class: 'summary' }, v.ok ? [icon('folder', 14), h('span', {}, where, ' on ', h('b', {}, S.mode === 'new' ? S.newBranch.trim() + ' (new)' : S.branch.trim()))] : h('span', {}, v.reason)),
+      btn('Cancel', closePanel),
+      h('button', { class: 'btn primary', disabled: !v.ok, onClick: startCommit }, label));
+    return foot;
+  }
+
+  function mainView() {
+    const fileInput = h('input', { type: 'file', multiple: true, hidden: true, onChange: (e) => { addFiles(filesFromInput(e.target.files)); e.target.value = ''; render(); } });
+    const dirInput = h('input', { type: 'file', webkitdirectory: true, directory: true, multiple: true, hidden: true, onChange: (e) => { addFiles(filesFromInput(e.target.files)); e.target.value = ''; render(); } });
+
+    const tabBtn = (id, label, ico) => h('button', { class: 'tab' + (S.tab === id ? ' on' : ''), onClick: () => { S.tab = id; S.notice = null; S.focus = id === 'folder' ? 'folder' : null; render(); } }, icon(ico, 15), label);
+
+    const noticeEl = S.notice && h('div', { class: `notice ${S.notice.type}` },
+      icon(S.notice.type === 'info' ? 'check' : 'alert', 16),
+      h('div', { class: 'grow' }, S.notice.text),
+      h('button', { class: 'icon-btn sm', title: 'Dismiss', onClick: () => { S.notice = null; render(); } }, icon('x', 13)));
+
+    const list = S.files.length && (() => {
+      const total = S.files.reduce((a, f) => a + f.file.size, 0);
+      return h('div', { class: 'list' },
+        h('div', { class: 'list-head' }, h('span', {}, `${plural(S.files.length, 'file')} · ${fmt(total)}`), h('button', { class: 'link', onClick: () => { S.files = []; render(); } }, 'Clear all')),
+        h('div', { class: 'rows' },
+          S.files.slice(0, MAX_ROWS).map((f) => {
+            const i = f.path.lastIndexOf('/');
+            return h('div', { class: 'row' },
+              icon('file', 15),
+              h('span', { class: 'name', title: f.path }, i >= 0 ? h('span', { class: 'dir' }, f.path.slice(0, i + 1)) : null, f.path.slice(i + 1)),
+              h('span', { class: 'size' }, fmt(f.file.size)),
+              h('button', { class: 'icon-btn sm', title: 'Remove', onClick: () => { S.files = S.files.filter((x) => x !== f); render(); } }, icon('x', 13)));
+          }),
+          S.files.length > MAX_ROWS ? h('div', { class: 'row more' }, `+ ${S.files.length - MAX_ROWS} more files`) : null));
+    })();
+
+    const choice = (val, title, sub, extra) => {
+      const on = S.mode === val;
+      return h('label', { class: 'choice' + (on ? ' on' : '') },
+        h('input', { type: 'radio', name: 'ghu-mode', checked: on, onChange: () => { S.mode = val; S.focus = val === 'new' ? 'newBranch' : null; render(); } }),
+        h('div', { style: 'flex:1;min-width:0' }, h('div', { class: 'ct' }, title), h('div', { class: 'cs' }, sub), on ? extra : null));
+    };
+
+    const body = h('div', { class: 'body' },
+      noticeEl,
+      h('div', { class: 'grid' },
+        field('Branch', wrap(icon('branch', 15), input({ 'data-f': 'branch', value: S.branch, list: 'ghu-branches', placeholder: S.locLoading ? 'Detecting…' : 'main', onInput: (e) => { S.branch = e.target.value; refreshFoot(); } }))),
+        field('Destination folder', wrap(h('span', { class: 'prefix' }, S.repo ? `${S.repo.name} /` : '…'), input({ 'data-f': 'path', value: S.path, placeholder: 'repository root', onInput: (e) => { S.path = e.target.value; refreshFoot(); } })))),
+      h('datalist', { id: 'ghu-branches' }, S.branches.map((b) => h('option', { value: b }))),
+      h('div', { class: 'tabs' }, tabBtn('upload', 'Upload files', 'upload'), tabBtn('folder', 'New folder', 'folderPlus')),
+      S.tab === 'folder' ? field('Folder name', wrap(icon('folder', 15), input({ 'data-f': 'folder', value: S.folder, placeholder: 'my-folder', onInput: (e) => { S.folder = e.target.value; refreshFoot(); } })), 'Use slashes for nested folders, like assets/images. Add files below to fill it, or leave it empty and GitHub gets a .gitkeep placeholder.') : null,
+      h('div', { class: 'dropzone' },
+        h('div', { class: 'dz-icon' }, icon('upload', 24)),
+        h('div', { class: 'dz-title' }, S.tab === 'folder' ? 'Drop files or folders to put inside' : 'Drag and drop files or folders'),
+        h('div', { class: 'muted' }, 'or pick them from your computer'),
+        h('div', { class: 'dz-actions' }, btn('Choose files', () => fileInput.click(), '', 'file'), btn('Choose folder', () => dirInput.click(), '', 'folder')),
+        fileInput, dirInput),
+      list || null,
+      field('Commit message', wrap(input({ value: S.message, placeholder: defaultMessage(), onInput: (e) => { S.message = e.target.value; } }))),
+      h('div', { class: 'choices' },
+        choice('direct', `Commit directly to ${S.branch.trim() || 'the branch'}`, 'Changes appear in the repo right away.'),
+        choice('new', 'Create a new branch', 'Keeps the default branch untouched so you can open a pull request.',
+          wrap(icon('branch', 15), input({ 'data-f': 'newBranch', value: S.newBranch, placeholder: 'add-files', onInput: (e) => { S.newBranch = e.target.value; refreshFoot(); } })))),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.skipJunk, onChange: (e) => { S.skipJunk = e.target.checked; if (S.skipJunk) S.files = S.files.filter((f) => !isJunk(f.path)); render(); } }), 'Skip junk files (.DS_Store, Thumbs.db, node_modules)'));
+
+    return [header('Add to repository', S.repo ? S.repo.full : S.locLoading ? 'Detecting repository…' : S.locError, [h('button', { class: 'icon-btn', title: 'Token settings', onClick: () => { S.view = 'token'; S.token = { msg: '', ok: false, busy: false }; render(); } }, icon('key', 16))]), body, mainFooter()];
+  }
+
+  /* ───────────────────────── token view ───────────────────────── */
+  function tokenView() {
+    const hasToken = !!GM_getValue(TOKEN_KEY, '');
+    const inp = input({ type: 'password', 'data-f': 'token', placeholder: 'github_pat_… or ghp_…', onKeydown: (e) => { if (e.key === 'Enter') save(); } });
+    const save = async () => {
+      const t = inp.value.trim();
+      if (!t) return;
+      S.token = { msg: 'Checking token…', ok: false, busy: true };
+      render();
+      const r = await gm('GET', `${API}/user`, null, t).catch((e) => ({ status: 0, data: { message: e.message } }));
+      if (r.status === 200) {
+        GM_setValue(TOKEN_KEY, t);
+        S.token = { msg: '', ok: true, busy: false };
+        S.view = 'main';
+        S.notice = { type: 'info', text: `Connected as ${r.data.login}.` };
+        render();
+        loadLocation();
+      } else {
+        S.token = { msg: r.status === 401 ? 'GitHub says this token is not valid.' : (r.data && r.data.message) || 'Could not verify the token.', ok: false, busy: false };
+        S.focus = 'token';
+        render();
+      }
+    };
+    const body = h('div', { class: 'body' },
+      h('div', { class: 'explain' },
+        h('div', {}, 'Uploads go through the GitHub API, so the script needs a personal access token. It is stored only in Tampermonkey on this browser and sent only to ', h('b', {}, 'api.github.com'), '.'),
+        h('div', {}, h('b', {}, 'Fine-grained token: '), 'choose the repositories, then set Contents to Read and write.'),
+        h('div', {}, h('b', {}, 'Classic token: '), 'tick the repo scope.')),
+      h('div', { class: 'actions', style: 'justify-content:flex-start;margin:0' },
+        h('a', { class: 'btn', href: 'https://github.com/settings/personal-access-tokens/new', target: '_blank', rel: 'noopener' }, 'Create fine-grained token'),
+        h('a', { class: 'btn', href: 'https://github.com/settings/tokens/new?scopes=repo&description=GitHub%20Repo%20Uploader', target: '_blank', rel: 'noopener' }, 'Create classic token')),
+      field('Personal access token', wrap(icon('key', 15), inp)),
+      S.token.msg ? h('div', { class: `notice ${S.token.ok ? 'info' : S.token.busy ? 'info' : 'err'}` }, icon(S.token.busy ? 'check' : 'alert', 16), h('div', { class: 'grow' }, S.token.msg)) : null);
+    const foot = h('div', { class: 'foot' },
+      h('div', { class: 'summary' }, hasToken ? 'A token is already saved.' : ''),
+      hasToken ? btn('Remove token', () => { GM_deleteValue(TOKEN_KEY); S.token = { msg: 'Token removed.', ok: false, busy: false }; render(); }, 'danger') : null,
+      hasToken ? btn('Back', () => { S.view = 'main'; render(); }) : btn('Cancel', closePanel),
+      h('button', { class: 'btn primary', disabled: S.token.busy, onClick: save }, 'Save and verify'));
+    return [header('Connect GitHub', 'One-time setup'), body, foot];
+  }
+
+  /* ───────────────────────── progress / done / error ───────────────────────── */
+  let PV = null;
+  function progressView() {
+    const rows = STEPS.map((label) => {
+      const dot = h('span', { class: 'dot' });
+      const det = h('span', { class: 'det' });
+      return { el: h('div', { class: 'step' }, dot, h('span', {}, label), det), dot, det };
+    });
+    const bar = h('i');
+    const pct = h('span', {}, '0%');
+    const note = h('span', {});
+    PV = { rows, bar, pct, note };
+    const body = h('div', { class: 'body' },
+      h('div', {}, h('div', { class: 'bar' }, bar), h('div', { class: 'pct' }, note, pct)),
+      h('div', { class: 'steps' }, rows.map((r) => r.el)));
+    setTimeout(updateProgress, 0);
+    return [header('Committing…', S.repo ? S.repo.full : ''), body, h('div', { class: 'foot' }, h('div', { class: 'summary' }, 'Keep this tab open until the commit finishes.'))];
+  }
+
+  function updateProgress() {
+    if (!PV || S.view !== 'progress') return;
+    const { i, frac, detail, note, total } = S.progress;
+    const p = Math.min(100, ((i + frac) / STEPS.length) * 100);
+    PV.bar.style.width = `${p}%`;
+    PV.pct.textContent = `${Math.round(p)}%`;
+    PV.note.textContent = note;
+    PV.rows.forEach((r, k) => {
+      r.el.className = 'step ' + (k < i ? 'done' : k === i ? 'run' : '');
+      r.dot.replaceChildren(k < i ? icon('check', 12) : k === i ? h('span', { class: 'spin' }) : '');
+      r.det.textContent = k === 1 ? (i === 1 ? detail : i > 1 ? `${total} / ${total}` : '') : '';
+    });
+  }
+
+  function doneView() {
+    const r = S.result;
+    const commitUrl = `https://github.com/${r.owner}/${r.name}/commit/${r.sha}`;
+    const body = h('div', { class: 'body' }, h('div', { class: 'center' },
+      h('div', { class: 'big ok' }, icon('check', 30)),
+      h('h2', {}, r.folder ? 'Folder created' : 'Files committed'),
+      h('p', {}, r.folder ? `Added a .gitkeep so Git keeps the empty folder, on ` : `${plural(r.count, 'file')} added to `, h('b', {}, `${r.owner}/${r.name}`), ' on branch ', h('b', {}, r.branch), '.'),
+      h('div', { class: 'actions' },
+        h('a', { class: 'btn', href: commitUrl, target: '_blank', rel: 'noopener' }, `View commit ${r.sha.slice(0, 7)}`),
+        r.mode === 'new' ? h('a', { class: 'btn primary', href: `https://github.com/${r.owner}/${r.name}/pull/new/${encRef(r.branch)}`, target: '_blank', rel: 'noopener' }, 'Open pull request') : null)));
+    return [header('Done', S.repo ? S.repo.full : ''), body, h('div', { class: 'foot' }, h('div', { class: 'summary' }),
+      btn('Add more', () => { S.view = 'main'; render(); }),
+      h('button', { class: 'btn primary', onClick: () => location.reload() }, 'Reload page'))];
+  }
+
+  function errorView() {
+    const body = h('div', { class: 'body' }, h('div', { class: 'center' },
+      h('div', { class: 'big err' }, icon('alert', 30)),
+      h('h2', {}, 'Commit failed'),
+      h('p', {}, S.error),
+      h('p', {}, 'Nothing was changed on your branch. Your selected files are still here.')));
+    return [header('Something went wrong', S.repo ? S.repo.full : ''), body, h('div', { class: 'foot' }, h('div', { class: 'summary' }),
+      btn('Token settings', () => { S.view = 'token'; S.token = { msg: '', ok: false, busy: false }; render(); }, '', 'key'),
+      h('button', { class: 'btn primary', onClick: () => { S.view = 'main'; render(); } }, 'Back to files'))];
+  }
+
+  /* ───────────────────────── render + open/close ───────────────────────── */
+  function render() {
+    overlay.classList.toggle('show', S.open);
+    if (!S.open) return;
+    PV = null;
+    const views = { main: mainView, token: tokenView, progress: progressView, done: doneView, error: errorView };
+    const parts = (views[S.view] || mainView)();
+    overlay.replaceChildren(h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Add files to repository' }, ...parts));
+    if (S.focus) {
+      const el = shadow.querySelector(`[data-f="${S.focus}"]`);
+      if (el) el.focus();
+      S.focus = null;
+    }
+    tick();
+  }
+
+  function openPanel() {
+    if (!parsePage()) return;
+    S.open = true;
+    if (['done', 'error'].includes(S.view)) S.view = 'main';
+    if (!GM_getValue(TOKEN_KEY, '')) {
+      S.view = 'token';
+      S.token = { msg: '', ok: false, busy: false };
+      S.focus = 'token';
+      render();
+      return;
+    }
+    if (S.view === 'token' && S.token.msg === '') S.view = 'main';
+    render();
+    if (!S.repo || S.locKey !== location.pathname) loadLocation();
+  }
+
+  function closePanel() {
+    if (S.view === 'progress') return;
+    S.open = false;
+    render();
+  }
+
+  /* ───────────────────────── drag & drop wiring ───────────────────────── */
+  const isFileDrag = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+
+  // Inside the modal: drop anywhere to add.
+  let dragN = 0;
+  overlay.addEventListener('dragenter', (e) => { if (!isFileDrag(e)) return; e.preventDefault(); dragN++; overlay.classList.add('dragging'); });
+  overlay.addEventListener('dragover', (e) => { if (!isFileDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  overlay.addEventListener('dragleave', (e) => { if (!isFileDrag(e)) return; dragN = Math.max(0, dragN - 1); if (!dragN) overlay.classList.remove('dragging'); });
+  overlay.addEventListener('drop', (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragN = 0;
+    overlay.classList.remove('dragging');
+    if (S.view === 'main') handleDrop(e.dataTransfer);
+  });
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) closePanel(); });
+
+  // On the repo page: dragging files from your desktop shows a full-page drop target.
+  const hideVeil = () => veil.classList.remove('show');
+  window.addEventListener('dragenter', (e) => {
+    if (S.open || !isFileDrag(e) || !parsePage()) return;
+    if (e.target && e.target.closest && e.target.closest('textarea, input, [contenteditable="true"], file-attachment')) return;
+    const p = parsePage();
+    veilText.textContent = `Drop to add to ${p.owner}/${p.name}`;
+    veil.classList.add('show');
+  });
+  veil.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  veil.addEventListener('dragleave', (e) => { if (!e.relatedTarget) hideVeil(); });
+  veil.addEventListener('drop', (e) => {
+    e.preventDefault();
+    hideVeil();
+    openPanel();
+    if (S.view === 'main') handleDrop(e.dataTransfer);
+  });
+  window.addEventListener('dragend', hideVeil);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideVeil(); if (S.open) closePanel(); } });
+
+  /* ───────────────────────── show / hide button on repo pages ───────────────────────── */
+  function tick() { fab.classList.toggle('show', !!parsePage() && !S.open); }
+  setInterval(tick, 700);
+  ['turbo:load', 'turbo:render', 'pjax:end', 'popstate'].forEach((ev) => document.addEventListener(ev, tick));
+  tick();
+
+  /* ───────────────────────── Tampermonkey menu ───────────────────────── */
+  if (typeof GM_registerMenuCommand === 'function') {
+    GM_registerMenuCommand('Open repo uploader', openPanel);
+    GM_registerMenuCommand('Set or change GitHub token', () => { if (!parsePage()) { alert('Open a repository page first.'); return; } S.open = true; S.view = 'token'; S.token = { msg: '', ok: false, busy: false }; S.focus = 'token'; render(); });
+    GM_registerMenuCommand('Remove saved token', () => { GM_deleteValue(TOKEN_KEY); alert('Token removed.'); });
+  }
+})();
